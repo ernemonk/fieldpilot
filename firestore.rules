@@ -1,0 +1,153 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================
+    // Helper Functions
+    // ============================================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get the user's tenant document
+    function getUserData(tenantId) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data;
+    }
+
+    // Check if authenticated user belongs to this tenant
+    function isTenantMember(tenantId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid));
+    }
+
+    // Check user role within tenant
+    function hasRole(tenantId, role) {
+      return isTenantMember(tenantId) &&
+        getUserData(tenantId).role == role;
+    }
+
+    // Check if user has any of the specified roles
+    function hasAnyRole(tenantId, roles) {
+      return isTenantMember(tenantId) &&
+        getUserData(tenantId).role in roles;
+    }
+
+    // Check if user is owner or admin
+    function isAdminOrOwner(tenantId) {
+      return hasAnyRole(tenantId, ['owner', 'admin']);
+    }
+
+    // ============================================
+    // Tenant-Level Rules
+    // ============================================
+
+    match /tenants/{tenantId} {
+      // Only tenant members can read tenant metadata
+      allow read: if isTenantMember(tenantId);
+      // Only owners can update tenant metadata
+      allow update: if hasRole(tenantId, 'owner');
+      // Allow creation for new tenant setup
+      allow create: if isAuthenticated();
+
+      // Tenant Config (branding, etc.)
+      match /config/{configDoc} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if isAdminOrOwner(tenantId);
+      }
+
+      // ============================================
+      // Users Collection
+      // ============================================
+      match /users/{userId} {
+        // Members can read all users in their tenant
+        allow read: if isTenantMember(tenantId);
+        // Users can update their own profile
+        allow update: if isAuthenticated() && request.auth.uid == userId;
+        // Owners and admins can create/update/delete users
+        allow create, update: if isAdminOrOwner(tenantId);
+        allow delete: if hasRole(tenantId, 'owner');
+      }
+
+      // ============================================
+      // Clients Collection
+      // ============================================
+      match /clients/{clientId} {
+        // All tenant members can read clients
+        allow read: if isTenantMember(tenantId);
+        // Only admins and owners can manage clients
+        allow create, update, delete: if isAdminOrOwner(tenantId);
+      }
+
+      // ============================================
+      // Jobs Collection
+      // ============================================
+      match /jobs/{jobId} {
+        // Admins/owners see all jobs; operators see only assigned
+        allow read: if isAdminOrOwner(tenantId) ||
+          (hasRole(tenantId, 'operator') &&
+            request.auth.uid in resource.data.assignedOperators) ||
+          (hasRole(tenantId, 'client') &&
+            resource.data.clientId == getUserData(tenantId).linkedClientId);
+        // Only admins and owners can create/update/delete jobs
+        allow create, update: if isAdminOrOwner(tenantId);
+        allow delete: if hasRole(tenantId, 'owner');
+      }
+
+      // ============================================
+      // Proposals Collection
+      // ============================================
+      match /proposals/{proposalId} {
+        // Admins/owners and linked clients can read proposals
+        allow read: if isAdminOrOwner(tenantId) ||
+          hasRole(tenantId, 'client');
+        // Only admins/owners can create and edit proposals
+        allow create, update: if isAdminOrOwner(tenantId);
+        // Clients can update status (approve/reject only)
+        allow update: if hasRole(tenantId, 'client') &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        allow delete: if hasRole(tenantId, 'owner');
+      }
+
+      // ============================================
+      // Work Sessions Collection
+      // ============================================
+      match /workSessions/{sessionId} {
+        // Admins/owners see all; operators see their own
+        allow read: if isAdminOrOwner(tenantId) ||
+          (hasRole(tenantId, 'operator') &&
+            resource.data.operatorId == request.auth.uid);
+        // Operators can create their own sessions
+        allow create: if isTenantMember(tenantId) &&
+          request.resource.data.operatorId == request.auth.uid;
+        // Operators can update their own sessions
+        allow update: if isAdminOrOwner(tenantId) ||
+          (hasRole(tenantId, 'operator') &&
+            resource.data.operatorId == request.auth.uid);
+        allow delete: if isAdminOrOwner(tenantId);
+      }
+
+      // ============================================
+      // Incident Reports Collection
+      // ============================================
+      match /incidentReports/{reportId} {
+        // Admins/owners see all; operators see their own
+        allow read: if isAdminOrOwner(tenantId) ||
+          (hasRole(tenantId, 'operator') &&
+            resource.data.operatorId == request.auth.uid);
+        // Operators can create incident reports
+        allow create: if isTenantMember(tenantId) &&
+          request.resource.data.operatorId == request.auth.uid;
+        // Admins/owners can update any report
+        allow update: if isAdminOrOwner(tenantId);
+        allow delete: if hasRole(tenantId, 'owner');
+      }
+    }
+
+    // Deny all other access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
