@@ -13,11 +13,12 @@ To add environment variables as GitHub secrets for use in GitHub Actions:
 |---|---|---|
 | `FIREBASE_PROJECT_ID` | field-pilot-tech | From your Firebase console |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | (Full JSON as string) | From your firebase-adminsdk-*.json file |
-| `VITE_FIREBASE_API_KEY` | Your API Key | From Firebase console |
-| `VITE_FIREBASE_AUTH_DOMAIN` | field-pilot-tech.firebaseapp.com | From Firebase console |
-| `VITE_FIREBASE_STORAGE_BUCKET` | field-pilot-tech.appspot.com | From Firebase console |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | 100369775586937423506 | From Firebase console |
-| `VITE_FIREBASE_APP_ID` | Your App ID | From Firebase console |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Your API Key | From Firebase console |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | field-pilot-tech.firebaseapp.com | From Firebase console |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | field-pilot-tech.appspot.com | From Firebase console |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | 100369775586937423506 | From Firebase console |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Your App ID | From Firebase console |
+| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | (optional) measurement id | From Firebase console |
 
 ## 2. Format Service Account Key for GitHub
 

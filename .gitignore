@@ -34,6 +34,12 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Local env
+.env.local
+
+# Local service account (do not commit)
+field_pilot_key.json
+
 # Firebase service account credentials
 field-pilot-tech-firebase-adminsdk-*.json
 *-firebase-adminsdk-*.json
