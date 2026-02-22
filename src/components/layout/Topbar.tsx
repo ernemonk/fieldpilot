@@ -12,6 +12,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/proposals':   'Proposals',
   '/sessions':    'Work Sessions',
   '/incidents':   'Incidents',
+  '/reports':     'Reports & Documents',
   '/ai/proposal': 'AI Proposal',
   '/ai/incident': 'AI Incident Report',
   '/settings':    'Settings',
@@ -21,7 +22,7 @@ function getPageTitle(pathname: string): string {
   for (const [key, label] of Object.entries(PAGE_TITLES)) {
     if (pathname.startsWith(key)) return label;
   }
-  return 'Field Pilot';
+  return '';
 }
 
 export function Topbar() {
