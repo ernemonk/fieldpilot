@@ -38,7 +38,7 @@ function formatBytes(n: number) {
 }
 
 export default function AIIncidentReportPage() {
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
   const tenantId = user?.tenantId ?? '';
   const isOwner = user?.role === 'owner';
   const isOperator = user?.role === 'operator';
@@ -194,46 +194,35 @@ export default function AIIncidentReportPage() {
       });
       setSavedDocId(docRef.id);
 
-      await new Promise((r) => setTimeout(r, 1500)); // simulate AI latency
-
-      setGeneratedReport(
-`# Incident Report
-
-## Summary
-${description || 'Field incident captured via AI Incident Report.'}
-
-## Severity
-**${severity.toUpperCase()}**
-
-## Details
-- **Date:** ${new Date().toLocaleDateString()}
-- **Time:** ${new Date().toLocaleTimeString()}
-- **Job:** ${jobTitle ?? 'Unspecified'}
-- **Operator:** ${user?.displayName ?? 'Unknown'}
-- **Photos Attached:** ${photos.length}
-- **Voice Note:** ${audioBlob ? `Yes` : 'No'}
-
-## AI Analysis
-*[AI endpoint placeholder — Gemini integration pending]*
-
-Based on submitted inputs, this incident has been classified as **${severity}** severity.
-${photos.length > 0 ? `${photos.length} photo(s) were captured at the scene.` : ''}
-${audioBlob ? 'A voice note was recorded and will be transcribed when the AI endpoint is connected.' : ''}
-
-1. ${severity === 'critical' || severity === 'high' ? '**Immediate supervisor notification required**' : 'Notify supervisor within 24 hours'}
-2. Document the area and secure the site
-3. Schedule follow-up inspection
-4. Complete corrective action report within ${severity === 'critical' ? '2 hours' : severity === 'high' ? '24 hours' : '72 hours'}
-
-## Corrective Actions
-- [ ] Isolate / secure affected area
-- [ ] Notify site supervisor
-- [ ] Document with additional photos if safe
-- [ ] Schedule certified review
-- [ ] Follow up within ${severity === 'critical' ? '2 hours' : severity === 'high' ? '24 hours' : '72 hours'}
-
----
-*Draft saved to Firestore (doc: ${docRef.id}) — AI processing pending • ${new Date().toLocaleString()}*`);
+      const token = await firebaseUser!.getIdToken();
+      const res = await fetch(
+        'https://us-central1-field-pilot-tech.cloudfunctions.net/genai',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'incident',
+            payload: {
+              jobTitle: jobTitle ?? null,
+              operatorName: user?.displayName ?? null,
+              date: new Date().toISOString().split('T')[0],
+              time: new Date().toTimeString().slice(0, 5),
+              severity,
+              description,
+              photos: photos.map((p) => p.name),
+              transcription: null,
+              location: null,
+              witnesses: [],
+            },
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = await res.json();
+      setGeneratedReport(data.markdown);
     } catch (err) {
       console.error('Failed to save incident draft:', err);
       alert('Failed to save incident to Firestore. Check your connection.');
