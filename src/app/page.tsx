@@ -239,8 +239,8 @@ export default function LandingPage() {
                 <Link href="/signup" className="flex items-center gap-2 rounded-xl bg-teal-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-teal-500/25 hover:bg-teal-500 transition-all">
                   Start Free Trial <ChevronRight className="h-5 w-5" />
                 </Link>
-                <Link href="#features" className="rounded-xl border border-gray-700 px-8 py-3.5 text-base font-medium text-gray-300 hover:border-gray-500 hover:text-white transition-all">
-                  Book a Demo
+                <Link href="/dashboard" className="rounded-xl border border-gray-700 px-8 py-3.5 text-base font-medium text-gray-300 hover:border-gray-500 hover:text-white transition-all">
+                  Portal
                 </Link>
               </>
             )}
