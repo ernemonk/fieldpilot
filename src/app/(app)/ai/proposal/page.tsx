@@ -28,6 +28,7 @@ import {
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
 import { createProposal, getJobs } from '@/lib/firestore';
+import { callGenAI } from '@/lib/genai';
 import type { Job } from '@/lib/types';
 
 export default function AIProposalGeneratorPage() {
@@ -164,27 +165,15 @@ export default function AIProposalGeneratorPage() {
     setIsProcessing(true);
     try {
       const token = await firebaseUser.getIdToken();
-      const res = await fetch(
-        'https://us-central1-field-pilot-tech.cloudfunctions.net/genai',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            type: 'proposal',
-            payload: {
-              projectName,
-              clientName,
-              text: projectText,
-              photos: photos.map((p) => p.name),
-            },
-          }),
-        }
-      );
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      const data = await res.json();
+      const data = await callGenAI(token, {
+        type: 'proposal',
+        payload: {
+          projectName,
+          clientName,
+          text: projectText,
+          photos: photos.map((p) => p.name),
+        },
+      });
       setGeneratedProposal(data.markdown);
       setEditableProposal(data.markdown);
     } catch (err) {

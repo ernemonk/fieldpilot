@@ -25,11 +25,12 @@ import {
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
 import {
-  createIncidentReport,
-  updateIncidentReport,
-  getJobsByOperator,
-  getJobs,
-} from '@/lib/firestore';
+      createIncidentReport,
+      updateIncidentReport,
+      getJobsByOperator,
+      getJobs,
+    } from '@/lib/firestore';
+import { callGenAI } from '@/lib/genai';
 import type { IncidentSeverity, Job } from '@/lib/types';
 
 function formatBytes(n: number) {
@@ -216,33 +217,21 @@ export default function AIIncidentReportPage() {
       setSavedDocId(docRef.id);
 
       const token = await firebaseUser!.getIdToken();
-      const res = await fetch(
-        'https://us-central1-field-pilot-tech.cloudfunctions.net/genai',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            type: 'incident',
-            payload: {
-              jobTitle: jobTitle ?? null,
-              operatorName: user?.displayName ?? null,
-              date: new Date().toISOString().split('T')[0],
-              time: new Date().toTimeString().slice(0, 5),
-              severity,
-              description,
-              photos: photos.map((p) => p.name),
-              transcription: voiceTranscript || null,
-              location: null,
-              witnesses: [],
-            },
-          }),
-        }
-      );
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      const data = await res.json();
+      const data = await callGenAI(token, {
+        type: 'incident',
+        payload: {
+          jobTitle: jobTitle ?? null,
+          operatorName: user?.displayName ?? null,
+          date: new Date().toISOString().split('T')[0],
+          time: new Date().toTimeString().slice(0, 5),
+          severity,
+          description,
+          photos: photos.map((p) => p.name),
+          transcription: voiceTranscript || null,
+          location: null,
+          witnesses: [],
+        },
+      });
       setGeneratedReport(data.markdown);
     } catch (err) {
       console.error('Failed to save incident draft:', err);
