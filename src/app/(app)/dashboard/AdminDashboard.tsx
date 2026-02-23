@@ -1,95 +1,77 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import {
-  Briefcase,
-  Users,
-  Clock,
-  FileText,
-  AlertTriangle,
-  Plus,
-  Sparkles,
-  UserPlus,
-  Timer,
-  ArrowRight,
-  Zap,
-  UserCheck,
+  Briefcase, Users, Clock, FileText, AlertTriangle,
+  Plus, Sparkles, UserPlus, Timer, ArrowRight, Zap, UserCheck, Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { User, JobStatus, ProposalStatus } from '@/lib/types';
-
-// ─── Demo data ────────────────────────────────────────────────────────────────
-
-const allJobs: {
-  id: string; title: string; client: string; status: JobStatus;
-  date: string; operators: string[]; estimatedEnd?: string;
-}[] = [
-  { id: 'j1', title: 'Electrical Panel Upgrade', client: 'Acme Corp',        status: 'in_progress',   date: 'Feb 15',  operators: ['Mike J.', 'Sarah C.'], estimatedEnd: 'Feb 20' },
-  { id: 'j2', title: 'HVAC System Install',      client: 'BuildRight LLC',   status: 'approved',      date: 'Feb 14',  operators: [] },
-  { id: 'j3', title: 'Generator Maintenance',    client: 'Metro Services',   status: 'proposal_sent', date: 'Feb 13',  operators: ['David P.'] },
-  { id: 'j4', title: 'Fire Alarm Circuit',       client: 'SafeWork Inc',     status: 'lead',          date: 'Feb 12',  operators: [] },
-  { id: 'j5', title: 'Substation Wiring',        client: 'PowerGrid Co',     status: 'scheduled',     date: 'Feb 11',  operators: ['Lisa M.'] },
-  { id: 'j6', title: 'Office Rewiring',          client: 'NextBuild Corp',   status: 'on_hold',       date: 'Feb 9',   operators: ['Mike J.'], estimatedEnd: 'Feb 5' },
-];
-
-const pendingProposals: { title: string; client: string; status: ProposalStatus; value: string; date: string }[] = [
-  { title: 'Electrical Panel Upgrade', client: 'Acme Corp',      status: 'sent',    value: '$15,000', date: 'Feb 5' },
-  { title: 'HVAC System Install',      client: 'BuildRight LLC', status: 'viewed',  value: '$42,000', date: 'Feb 10' },
-  { title: 'Substation Wiring',        client: 'PowerGrid Co',   status: 'draft',   value: '$85,000', date: 'Feb 13' },
-];
-
-type ActivityType = 'job_update' | 'session_log' | 'incident' | 'proposal' | 'assignment';
-
-const activityFeed: {
-  type: ActivityType; text: string; meta: string; time: string;
-}[] = [
-  { type: 'session_log',   text: 'Mike J. logged 4.5 hrs on Electrical Panel Upgrade',   meta: 'Session ended at 5:30 PM',                                 time: '2h ago' },
-  { type: 'job_update',    text: 'HVAC System Install advanced to Approved',               meta: 'Proposal accepted by BuildRight LLC',                     time: '4h ago' },
-  { type: 'incident',      text: 'Incident filed on Substation Wiring — Medium severity',  meta: 'Filed by David P. · Under investigation',                time: '6h ago' },
-  { type: 'proposal',      text: 'HVAC System Install proposal viewed by client',          meta: 'BuildRight LLC opened the proposal',                       time: '7h ago' },
-  { type: 'assignment',    text: 'Lisa M. assigned to Substation Wiring',                  meta: 'Assigned by Admin',                                        time: 'Yesterday' },
-  { type: 'session_log',   text: 'Sarah C. logged 6 hrs on Electrical Panel Upgrade',      meta: 'Session ended at 6:00 PM',                               time: 'Yesterday' },
-  { type: 'job_update',    text: 'Office Rewiring placed On Hold',                         meta: 'Awaiting client material confirmation',                    time: 'Yesterday' },
-];
-
-const activityIconMap: Record<ActivityType, React.ReactNode> = {
-  job_update:  <Briefcase    className="h-3.5 w-3.5" />,
-  session_log: <Timer        className="h-3.5 w-3.5" />,
-  incident:    <AlertTriangle className="h-3.5 w-3.5" />,
-  proposal:    <FileText     className="h-3.5 w-3.5" />,
-  assignment:  <UserCheck    className="h-3.5 w-3.5" />,
-};
-
-const activityColorMap: Record<ActivityType, string> = {
-  job_update:  'bg-teal-100 text-teal-700',
-  session_log: 'bg-blue-100 text-blue-700',
-  incident:    'bg-red-100 text-red-700',
-  proposal:    'bg-indigo-100 text-indigo-700',
-  assignment:  'bg-green-100 text-green-700',
-};
+import type { User, Job, Proposal, Client, ProposalStatus } from '@/lib/types';
+import { useTenant } from '@/context/TenantContext';
+import { formatDate } from '@/lib/utils';
+import { getJobs, getProposals, getClients, getUsers } from '@/lib/firestore';
 
 const proposalStatusColor: Record<ProposalStatus, string> = {
-  draft:    'bg-gray-100 text-gray-700',
-  sent:     'bg-amber-100 text-amber-800',
-  viewed:   'bg-teal-100 text-teal-800',
-  approved: 'bg-green-100 text-green-800',
+  draft: 'bg-gray-100 text-gray-700', sent: 'bg-amber-100 text-amber-800',
+  viewed: 'bg-teal-100 text-teal-800', approved: 'bg-green-100 text-green-800',
   rejected: 'bg-red-100 text-red-800',
 };
 const proposalStatusLabel: Record<ProposalStatus, string> = {
   draft: 'Draft', sent: 'Sent', viewed: 'Viewed', approved: 'Approved', rejected: 'Rejected',
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function AdminDashboard({ user }: { user: User | null }) {
-  // Derived attention data
-  const unassigned = allJobs.filter((j) => j.operators.length === 0 && !['lead', 'cancelled', 'closed', 'completed', 'invoiced'].includes(j.status));
-  const overdue    = allJobs.filter((j) => j.estimatedEnd && new Date(j.estimatedEnd + ', 2026') < new Date() && ['in_progress', 'scheduled', 'on_hold'].includes(j.status));
-  const activeJobs = allJobs.filter((j) => ['in_progress', 'scheduled', 'approved'].includes(j.status));
+  const { tenantId } = useTenant();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    try {
+      const [fetchedJobs, fetchedProposals, fetchedClients, fetchedUsers] = await Promise.all([
+        getJobs(tenantId), getProposals(tenantId), getClients(tenantId), getUsers(tenantId),
+      ]);
+      setJobs(fetchedJobs);
+      setProposals(fetchedProposals);
+      setClients(fetchedClients);
+      setAllUsers(fetchedUsers);
+    } catch (err) {
+      console.error('Failed to load admin dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // Derived helpers
+  const clientName = (clientId: string) => clients.find((c) => c.id === clientId)?.name ?? clientId;
+  const operatorNames = (ids: string[]) => ids.map((id) => allUsers.find((u) => u.uid === id)?.displayName ?? id);
+  const jobTitle = (jobId: string) => jobs.find((j) => j.id === jobId)?.title ?? jobId;
+
+  const unassigned = jobs.filter((j) => j.assignedOperators.length === 0 && !['lead','cancelled','closed','completed','invoiced'].includes(j.status));
+  const overdue = jobs.filter((j) => j.estimatedEnd && j.estimatedEnd < new Date() && ['in_progress','scheduled','on_hold'].includes(j.status));
+  const activeJobs = jobs.filter((j) => ['in_progress','scheduled','approved'].includes(j.status));
+  const openProposals = proposals.filter((p) => p.status !== 'draft');
+  const recentJobs = [...jobs].sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime()).slice(0, 7);
+  const recentProposals = [...proposals].filter((p) => p.status !== 'draft').sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 3);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-[#9CA3AF]" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -152,7 +134,6 @@ export function AdminDashboard({ user }: { user: User | null }) {
           label="Active Jobs"
           value={activeJobs.length}
           icon={<Briefcase className="h-5 w-5" />}
-          trend={{ value: 8, positive: true }}
         />
         <StatCard
           label="Pending Assignment"
@@ -160,15 +141,14 @@ export function AdminDashboard({ user }: { user: User | null }) {
           icon={<UserPlus className="h-5 w-5" />}
         />
         <StatCard
-          label="Hours Logged Today"
-          value="34.5"
+          label="Total Jobs"
+          value={jobs.length}
           icon={<Clock className="h-5 w-5" />}
         />
         <StatCard
           label="Open Proposals"
-          value={pendingProposals.filter((p) => p.status !== 'draft').length}
+          value={openProposals.length}
           icon={<FileText className="h-5 w-5" />}
-          trend={{ value: 2, positive: true }}
         />
       </div>
 
@@ -184,42 +164,40 @@ export function AdminDashboard({ user }: { user: User | null }) {
             </Link>
           </CardHeader>
           <div className="space-y-2">
-            {allJobs.map((job) => {
-              const isUnassigned = job.operators.length === 0 && !['lead', 'cancelled', 'closed', 'completed', 'invoiced'].includes(job.status);
-              const isOverdue = !!job.estimatedEnd && new Date(job.estimatedEnd + ', 2026') < new Date() && ['in_progress', 'scheduled', 'on_hold'].includes(job.status);
+            {recentJobs.map((job) => {
+              const ops = operatorNames(job.assignedOperators);
+              const isUnassigned = job.assignedOperators.length === 0 && !['lead','cancelled','closed','completed','invoiced'].includes(job.status);
+              const isOverdueJob = !!job.estimatedEnd && job.estimatedEnd < new Date() && ['in_progress','scheduled','on_hold'].includes(job.status);
               return (
                 <div
                   key={job.id}
                   className={`flex items-center justify-between rounded-lg border p-3.5 transition-colors hover:bg-gray-50 ${
-                    isOverdue ? 'border-red-200 bg-red-50/40' : isUnassigned ? 'border-amber-200 bg-amber-50/40' : 'border-[#E5E7EB]'
+                    isOverdueJob ? 'border-red-200 bg-red-50/40' : isUnassigned ? 'border-amber-200 bg-amber-50/40' : 'border-[#E5E7EB]'
                   }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-medium text-[#111827]">{job.title}</p>
-                      {isOverdue && (
-                        <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-                          OVERDUE
-                        </span>
+                      {isOverdueJob && (
+                        <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">OVERDUE</span>
                       )}
-                      {isUnassigned && !isOverdue && (
-                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                          UNASSIGNED
-                        </span>
+                      {isUnassigned && !isOverdueJob && (
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">UNASSIGNED</span>
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-[#6B7280]">
-                      {job.client}
-                      {job.operators.length > 0 && <> · <span className="text-teal-600">{job.operators.join(', ')}</span></>}
+                      {clientName(job.clientId)}
+                      {ops.length > 0 && <> · <span className="text-teal-600">{ops.join(', ')}</span></>}
                     </p>
                   </div>
                   <div className="ml-4 flex shrink-0 items-center gap-3">
                     <StatusBadge status={job.status} />
-                    <span className="hidden text-xs text-[#6B7280] sm:block">{job.date}</span>
+                    <span className="hidden text-xs text-[#6B7280] sm:block">{formatDate(job.lastUpdated)}</span>
                   </div>
                 </div>
               );
             })}
+            {recentJobs.length === 0 && <p className="py-4 text-center text-sm text-[#6B7280]">No jobs yet.</p>}
           </div>
         </Card>
 
@@ -235,20 +213,21 @@ export function AdminDashboard({ user }: { user: User | null }) {
               </Link>
             </CardHeader>
             <div className="space-y-2.5">
-              {pendingProposals.map((p, i) => (
-                <div key={i} className="flex items-start justify-between gap-3 rounded-lg border border-[#E5E7EB] p-3">
+              {recentProposals.map((p) => (
+                <div key={p.id} className="flex items-start justify-between gap-3 rounded-lg border border-[#E5E7EB] p-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-[#111827]">{p.title}</p>
-                    <p className="text-xs text-[#6B7280]">{p.client} · {p.date}</p>
+                    <p className="truncate text-sm font-medium text-[#111827]">{jobTitle(p.jobId)}</p>
+                    <p className="text-xs text-[#6B7280]">{formatDate(p.updatedAt)}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="text-sm font-semibold text-[#111827]">{p.value}</span>
+                    <span className="text-sm font-semibold text-[#111827]">${p.priceEstimate.toLocaleString()}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${proposalStatusColor[p.status]}`}>
                       {proposalStatusLabel[p.status]}
                     </span>
                   </div>
                 </div>
               ))}
+              {recentProposals.length === 0 && <p className="py-2 text-center text-sm text-[#6B7280]">No proposals yet.</p>}
               <Link href="/ai/proposal" className="block pt-1">
                 <Button variant="secondary" size="sm" className="w-full justify-center" icon={<Sparkles className="h-3.5 w-3.5" />}>
                   Generate AI Proposal
@@ -291,27 +270,24 @@ export function AdminDashboard({ user }: { user: User | null }) {
       {/* ── Activity Feed ─────────────────────────────────────────────────── */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
+          <CardTitle>Recently Updated Jobs</CardTitle>
         </CardHeader>
         <div className="divide-y divide-[#F3F4F6]">
-          {activityFeed.map((item, i) => (
-            <div key={i} className="flex items-start gap-4 py-3">
-              <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${activityColorMap[item.type]}`}>
-                {activityIconMap[item.type]}
+          {recentJobs.map((job) => (
+            <div key={job.id} className="flex items-start gap-4 py-3">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700">
+                <Briefcase className="h-3.5 w-3.5" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-[#111827]">{item.text}</p>
-                <p className="mt-0.5 text-xs text-[#6B7280]">{item.meta}</p>
+                <p className="text-sm text-[#111827]">{job.title}</p>
+                <p className="mt-0.5 text-xs text-[#6B7280]">{clientName(job.clientId)} · <StatusBadge status={job.status} /></p>
               </div>
-              <span className="shrink-0 text-xs text-[#9CA3AF]">{item.time}</span>
+              <span className="shrink-0 text-xs text-[#9CA3AF]">{formatDate(job.lastUpdated)}</span>
             </div>
           ))}
-        </div>
-        {/* View more hint */}
-        <div className="mt-2 border-t border-[#F3F4F6] pt-3 text-center">
-          <button className="text-xs text-[#6B7280] hover:text-teal-600 hover:underline">
-            Load more activity
-          </button>
+          {recentJobs.length === 0 && (
+            <p className="py-8 text-center text-sm text-[#6B7280]">No activity yet.</p>
+          )}
         </div>
       </Card>
     </div>

@@ -58,6 +58,9 @@ export interface User {
   status: UserStatus;
   photoURL?: string;
   phone?: string;
+  // For users with role 'client' — links this auth user to a Client document.
+  // Firestore rules use this to scope job/proposal visibility to their own client record.
+  linkedClientId?: string;
   createdAt: Date;
   lastLogin?: Date;
 }
@@ -130,8 +133,8 @@ export interface IncidentReport {
   severity: IncidentSeverity;
   description: string;
   photos: string[];           // Firebase Storage URLs (or filenames until upload is wired)
-  voiceNoteRecorded: boolean; // true when operator recorded audio
-  aiGeneratedReport?: string; // AI-generated markdown report (placeholder: saved as-is)
+  voiceTranscript?: string;   // speech-to-text transcript captured in the UI
+  aiGeneratedReport?: string; // AI-generated markdown report saved after generation
   resolutionStatus: IncidentResolution;
   createdAt: Date;
   updatedAt: Date;

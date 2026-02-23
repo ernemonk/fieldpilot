@@ -1,21 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { SlideOverPanel, SlideOverTabs } from '@/components/ui/SlideOverPanel';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Textarea, Select } from '@/components/ui/FormFields';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
+import { useTenant } from '@/context/TenantContext';
 import {
   Plus, FileText, CheckCircle, XCircle, Clock, Send,
-  Briefcase, Download, Eye, MoreVertical,
+  Briefcase, Download, Eye, Loader2,
 } from 'lucide-react';
-import type { ProposalStatus } from '@/lib/types';
-import { cn } from '@/lib/utils';
+import type { Proposal, ProposalStatus, Job, Client } from '@/lib/types';
+import { cn, formatDate } from '@/lib/utils';
+import {
+  getProposals, createProposal, updateProposal,
+  getJobs, getJobsByClient, createJob, getClients,
+} from '@/lib/firestore';
 
 const statusConfig: Record<ProposalStatus, { label: string; color: string; icon: React.ReactNode }> = {
   draft: { label: 'Draft', color: 'text-gray-600 bg-gray-100', icon: <FileText className="h-4 w-4" /> },
@@ -25,92 +29,93 @@ const statusConfig: Record<ProposalStatus, { label: string; color: string; icon:
   rejected: { label: 'Rejected', color: 'text-red-600 bg-red-100', icon: <XCircle className="h-4 w-4" /> },
 };
 
-interface DemoProposal {
-  id: string;
-  jobTitle: string;
-  clientName: string;
-  status: ProposalStatus;
-  priceEstimate: number;
-  version: number;
-  createdAt: string;
-  scope?: string;
-  notes?: string;
-}
-
-const initialProposals: DemoProposal[] = [
-  {
-    id: 'p1', jobTitle: 'Electrical Panel Upgrade', clientName: 'Acme Corp',
-    status: 'sent', priceEstimate: 15000, version: 2, createdAt: 'Feb 5, 2026',
-    scope: 'Full panel replacement and upgrade to 200A service. Includes permit acquisition, removal of old 100A panel, installation of new 200A main breaker panel with 42 circuits, and final inspection.',
-  },
-  {
-    id: 'p2', jobTitle: 'HVAC System Install', clientName: 'BuildRight LLC',
-    status: 'sent', priceEstimate: 42000, version: 1, createdAt: 'Feb 10, 2026',
-    scope: 'Install new central HVAC system for 15,000 sq ft warehouse. Includes rooftop unit, ductwork, thermostats, and commissioning.',
-  },
-  {
-    id: 'p3', jobTitle: 'Substation Wiring', clientName: 'PowerGrid Co',
-    status: 'draft', priceEstimate: 85000, version: 1, createdAt: 'Feb 13, 2026',
-    scope: 'Complete rewiring of electrical substation including transformer connections, bus bars, protection relays, and metering.',
-  },
-  {
-    id: 'p4', jobTitle: 'Solar Panel Install', clientName: 'GreenEnergy Ltd',
-    status: 'rejected', priceEstimate: 28000, version: 3, createdAt: 'Jan 28, 2026',
-    scope: 'Installation of 80 kW rooftop solar array with grid-tie inverter, monitoring system, and utility interconnection.',
-    notes: 'Client rejected due to budget constraints. May revisit Q3 2026.',
-  },
-  {
-    id: 'p5', jobTitle: 'Fire Alarm Circuit', clientName: 'SafeWork Inc',
-    status: 'viewed', priceEstimate: 12000, version: 1, createdAt: 'Feb 14, 2026',
-    scope: 'Annual fire alarm system inspection, certification, and replacement of 12 aging detector units.',
-  },
-  {
-    id: 'p6', jobTitle: 'Generator Maintenance', clientName: 'Metro Services',
-    status: 'approved', priceEstimate: 4500, version: 1, createdAt: 'Feb 1, 2026',
-    scope: 'Full preventative maintenance on 150 kW backup generator including oil change, filter replacement, load bank testing, and transfer switch test.',
-    notes: 'Approved by client on Feb 3. Ready to convert to active job.',
-  },
-];
 
 export default function ProposalsPage() {
   const { user } = useAuth();
+  const { tenantId } = useTenant();
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
   const isClient = user?.role === 'client';
-  // Demo: client user is linked to 'Acme Corp'. In production, resolve via client.linkedUserId.
-  const myClientName = 'Acme Corp';
 
-  const [proposals, setProposals] = useState<DemoProposal[]>(initialProposals);
-  const [selected, setSelected] = useState<DemoProposal | null>(null);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [allJobs, setAllJobs] = useState<Job[]>([]);
+  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState<Proposal | null>(null);
   const [slideOpen, setSlideOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ type: 'approve' | 'reject' | 'convert'; proposal: DemoProposal } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'approve' | 'reject' | 'convert'; proposal: Proposal } | null>(null);
   const [ownerNote, setOwnerNote] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProposalStatus | 'all'>('all');
+  const [newProposalForm, setNewProposalForm] = useState({ jobId: '', scope: '', notes: '', priceEstimate: '' });
 
-  const filtered = proposals.filter((p) => {
-    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-    const matchesClient = !isClient || p.clientName === myClientName;
-    return matchesStatus && matchesClient;
-  });
+  // ── Load data ────────────────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    try {
+      const [fetchedJobs, fetchedClients] = await Promise.all([
+        isClient && user?.linkedClientId
+          ? getJobsByClient(tenantId, user.linkedClientId)
+          : getJobs(tenantId),
+        isOwnerOrAdmin ? getClients(tenantId) : Promise.resolve([] as Client[]),
+      ]);
+      setAllJobs(fetchedJobs);
+      setAllClients(fetchedClients);
+      // Load proposals after jobs so we can filter by client job IDs
+      const jobIds = fetchedJobs.map((j) => j.id);
+      const allProposals = await getProposals(tenantId);
+      const filteredForRole = isClient
+        ? allProposals.filter((p) => jobIds.includes(p.jobId))
+        : allProposals;
+      setProposals(filteredForRole);
+    } catch (err) {
+      console.error('Failed to load proposals:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId, user?.uid, isClient, isOwnerOrAdmin, user?.linkedClientId]);
 
-  const handleStatusChange = (id: string, newStatus: ProposalStatus, note?: string) => {
-    setProposals((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, status: newStatus, notes: note ? `${p.notes ? p.notes + '\n' : ''}${note}` : p.notes }
-          : p
-      )
-    );
-    // Also update selected panel if open
-    setSelected((prev) => prev && prev.id === id ? { ...prev, status: newStatus } : prev);
-    setConfirmAction(null);
-    setOwnerNote('');
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Derived display helpers ───────────────────────────────────────────────
+  const getJobTitle = (jobId: string) => allJobs.find((j) => j.id === jobId)?.title ?? jobId;
+  const getClientName = (jobId: string) => {
+    const job = allJobs.find((j) => j.id === jobId);
+    if (!job) return '';
+    return allClients.find((c) => c.id === job.clientId)?.name ?? job.clientId;
+  };
+  const getJobScope = (p: Proposal) => (p.specsJson?.scope as string) ?? p.aiGeneratedText ?? '';
+  const getProposalNotes = (p: Proposal) => (p.specsJson?.notes as string) ?? '';
+
+  // ── Filtered list ────────────────────────────────────────────────────────
+  const filtered = proposals.filter((p) => statusFilter === 'all' || p.status === statusFilter);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const handleStatusChange = async (id: string, newStatus: ProposalStatus, note?: string) => {
+    if (!tenantId) return;
+    try {
+      const updates: Partial<Proposal> = { status: newStatus };
+      if (note) {
+        const existing = proposals.find((p) => p.id === id);
+        const existingNotes = (existing?.specsJson?.notes as string) ?? '';
+        updates.specsJson = { ...(existing?.specsJson ?? {}), notes: existingNotes ? `${existingNotes}\n${note}` : note };
+      }
+      await updateProposal(tenantId, id, updates);
+      setProposals((prev) => prev.map((p) => p.id === id ? { ...p, ...updates } : p));
+      setSelected((prev) => prev && prev.id === id ? { ...prev, ...updates } : prev);
+    } catch (err) {
+      console.error('Failed to update proposal:', err);
+    } finally {
+      setConfirmAction(null);
+      setOwnerNote('');
+    }
   };
 
-  const openDetail = (p: DemoProposal) => {
-    // Auto-mark as 'viewed' when client opens a sent proposal
-    if (isClient && p.status === 'sent') {
-      handleStatusChange(p.id, 'viewed');
+  const openDetail = async (p: Proposal) => {
+    if (isClient && p.status === 'sent' && tenantId) {
+      // Auto-mark as viewed
+      await handleStatusChange(p.id, 'viewed');
       setSelected({ ...p, status: 'viewed' });
     } else {
       setSelected(p);
@@ -146,6 +151,12 @@ export default function ProposalsPage() {
       />
 
       {/* Summary stat strip */}
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-[#9CA3AF]" />
+        </div>
+      ) : (
+        <>
       <div className="mb-6 flex flex-wrap gap-2">
         <button
           onClick={() => setStatusFilter('all')}
@@ -191,8 +202,8 @@ export default function ProposalsPage() {
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
-                  <h3 className="truncate font-medium text-[#111827]">{proposal.jobTitle}</h3>
-                  <p className="text-sm text-[#6B7280]">{proposal.clientName}</p>
+                  <h3 className="truncate font-medium text-[#111827]">{getJobTitle(proposal.jobId)}</h3>
+                  <p className="text-sm text-[#6B7280]">{getClientName(proposal.jobId)}</p>
                 </div>
                 <span className={cn('ml-2 inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium', cfg.color)}>
                   {cfg.icon}
@@ -200,8 +211,8 @@ export default function ProposalsPage() {
                 </span>
               </div>
 
-              {proposal.scope && (
-                <p className="mt-2 text-xs text-[#6B7280] line-clamp-2">{proposal.scope}</p>
+              {getJobScope(proposal) && (
+                <p className="mt-2 text-xs text-[#6B7280] line-clamp-2">{getJobScope(proposal)}</p>
               )}
 
               <div className="mt-4 flex items-center justify-between border-t border-[#E5E7EB] pt-4">
@@ -209,7 +220,7 @@ export default function ProposalsPage() {
                   <p className="text-xl font-semibold text-[#111827]">
                     ${proposal.priceEstimate.toLocaleString()}
                   </p>
-                  <p className="text-xs text-[#6B7280]">v{proposal.version} · {proposal.createdAt}</p>
+                  <p className="text-xs text-[#6B7280]">v{proposal.version} · {formatDate(proposal.createdAt)}</p>
                 </div>
                 {/* Quick actions on card */}
                 {(isOwnerOrAdmin || isClient) && (
@@ -255,6 +266,8 @@ export default function ProposalsPage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Detail Slide-Over */}
       <SlideOverPanel
@@ -281,7 +294,7 @@ export default function ProposalsPage() {
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">Client</p>
-                        <p className="mt-1 font-medium text-[#111827]">{selected.clientName}</p>
+                        <p className="mt-1 font-medium text-[#111827]">{getClientName(selected.jobId)}</p>
                       </div>
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">Value</p>
@@ -289,7 +302,7 @@ export default function ProposalsPage() {
                       </div>
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">Created</p>
-                        <p className="mt-1 text-[#111827]">{selected.createdAt}</p>
+                        <p className="mt-1 text-[#111827]">{formatDate(selected.createdAt)}</p>
                       </div>
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">Version</p>
@@ -297,17 +310,17 @@ export default function ProposalsPage() {
                       </div>
                     </div>
 
-                    {selected.scope && (
+                    {getJobScope(selected) && (
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">Scope of Work</p>
-                        <p className="mt-2 text-sm text-[#374151] leading-relaxed">{selected.scope}</p>
+                        <p className="mt-2 text-sm text-[#374151] leading-relaxed">{getJobScope(selected)}</p>
                       </div>
                     )}
 
-                    {selected.notes && (
+                    {getProposalNotes(selected) && (
                       <div className="rounded-lg bg-amber-50 p-4">
                         <p className="text-xs font-medium uppercase tracking-wider text-amber-700">Notes</p>
-                        <p className="mt-1 text-sm text-amber-900">{selected.notes}</p>
+                        <p className="mt-1 text-sm text-amber-900">{getProposalNotes(selected)}</p>
                       </div>
                     )}
 
@@ -392,7 +405,7 @@ export default function ProposalsPage() {
                         <div>
                           <p className="text-sm font-medium text-[#111827]">Version {v}</p>
                           <p className="text-xs text-[#6B7280]">
-                            {v === selected.version ? selected.createdAt : `Earlier revision`}
+                            {v === selected.version ? formatDate(selected.createdAt) : `Earlier revision`}
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -424,7 +437,7 @@ export default function ProposalsPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-[#374151]">
-            Approve proposal for <strong>{confirmAction?.proposal.jobTitle}</strong> (
+            Approve proposal for <strong>{confirmAction && getJobTitle(confirmAction.proposal.jobId)}</strong> (
             ${confirmAction?.proposal.priceEstimate.toLocaleString()})? You can add a note before confirming.
           </p>
           <Textarea
@@ -461,7 +474,7 @@ export default function ProposalsPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-[#374151]">
-            Reject proposal for <strong>{confirmAction?.proposal.jobTitle}</strong>? Please provide a reason.
+            Reject proposal for <strong>{confirmAction && getJobTitle(confirmAction.proposal.jobId)}</strong>? Please provide a reason.
           </p>
           <Textarea
             label="Rejection Reason"
@@ -498,26 +511,44 @@ export default function ProposalsPage() {
       >
         <div className="space-y-4">
           <div className="rounded-lg bg-teal-50 p-4">
-            <p className="text-sm font-medium text-teal-900">{confirmAction?.proposal.jobTitle}</p>
-            <p className="text-sm text-teal-700">{confirmAction?.proposal.clientName}</p>
+            <p className="text-sm font-medium text-teal-900">{confirmAction && getJobTitle(confirmAction.proposal.jobId)}</p>
+            <p className="text-sm text-teal-700">{confirmAction && getClientName(confirmAction.proposal.jobId)}</p>
             <p className="mt-1 text-sm font-semibold text-teal-900">
               ${confirmAction?.proposal.priceEstimate.toLocaleString()}
             </p>
           </div>
           <p className="text-sm text-[#374151]">
-            This will create a new active job from the approved proposal and move it to the Jobs pipeline as{' '}
-            <strong>Scheduled</strong>.
+            This will update the job status to <strong>Scheduled</strong> and mark the proposal as approved.
           </p>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setConfirmAction(null)}>Cancel</Button>
             <Button
-              onClick={() => {
-                setConfirmAction(null);
-                alert(`Job created for "${confirmAction?.proposal.jobTitle}" — connect to createJob() in firestore.ts`);
+              disabled={saving}
+              onClick={async () => {
+                if (!confirmAction || !tenantId) return;
+                setSaving(true);
+                try {
+                  const job = allJobs.find((j) => j.id === confirmAction.proposal.jobId);
+                  if (job) {
+                    await createJob(tenantId, {
+                      title: job.title, description: job.description, clientId: job.clientId,
+                      priority: job.priority, status: 'scheduled', estimatedStart: job.estimatedStart,
+                      estimatedEnd: job.estimatedEnd, assignedOperators: job.assignedOperators,
+                      proposalGenerated: true, createdBy: user?.uid ?? '',
+                    });
+                  }
+                  await updateProposal(tenantId, confirmAction.proposal.id, { status: 'approved' });
+                  setProposals((prev) => prev.map((p) => p.id === confirmAction.proposal.id ? { ...p, status: 'approved' } : p));
+                  setConfirmAction(null);
+                } catch (err) {
+                  console.error('Failed to convert proposal:', err);
+                } finally {
+                  setSaving(false);
+                }
               }}
               icon={<Briefcase className="h-4 w-4" />}
             >
-              Convert to Job
+              {saving ? 'Converting…' : 'Convert to Job'}
             </Button>
           </div>
         </div>
@@ -525,22 +556,45 @@ export default function ProposalsPage() {
 
       {/* New Proposal Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Create New Proposal" maxWidth="max-w-lg">
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setModalOpen(false); }}>
+        <form className="space-y-4" onSubmit={async (e) => {
+          e.preventDefault();
+          if (!tenantId || !newProposalForm.jobId) return;
+          setSaving(true);
+          try {
+            const newP = await createProposal(tenantId, {
+              jobId: newProposalForm.jobId,
+              specsJson: { scope: newProposalForm.scope, notes: newProposalForm.notes },
+              images: [],
+              priceEstimate: parseFloat(newProposalForm.priceEstimate) || 0,
+              version: 1,
+              status: 'draft',
+            });
+            setProposals((prev) => [...prev, { ...newP, id: newP.id } as Proposal]);
+            setNewProposalForm({ jobId: '', scope: '', notes: '', priceEstimate: '' });
+            setModalOpen(false);
+          } catch (err) {
+            console.error('Failed to create proposal:', err);
+          } finally {
+            setSaving(false);
+          }
+        }}>
           <Select
             label="Job"
             id="proposalJob"
+            value={newProposalForm.jobId}
+            onChange={(e) => setNewProposalForm((f) => ({ ...f, jobId: e.target.value }))}
             options={[
               { value: '', label: 'Select a job...' },
-              { value: 'j1', label: 'Electrical Panel Upgrade' },
-              { value: 'j2', label: 'HVAC System Install' },
-              { value: 'j3', label: 'Fire Alarm Circuit' },
+              ...allJobs.map((j) => ({ value: j.id, label: j.title })),
             ]}
           />
-          <Textarea label="Scope of Work" id="scope" placeholder="Describe the scope..." />
-          <Input label="Price Estimate ($)" id="price" type="number" placeholder="0.00" />
+          <Textarea label="Scope of Work" id="scope" placeholder="Describe the scope..."
+            value={newProposalForm.scope} onChange={(e) => setNewProposalForm((f) => ({ ...f, scope: e.target.value }))} />
+          <Input label="Price Estimate ($)" id="price" type="number" placeholder="0.00"
+            value={newProposalForm.priceEstimate} onChange={(e) => setNewProposalForm((f) => ({ ...f, priceEstimate: e.target.value }))} />
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Create Proposal</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create Proposal'}</Button>
           </div>
         </form>
       </Modal>

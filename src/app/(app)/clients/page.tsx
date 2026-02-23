@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
@@ -10,49 +10,26 @@ import { Input } from '@/components/ui/FormFields';
 import { ActionDropdown } from '@/components/ui/ActionDropdown';
 import { Avatar } from '@/components/ui/Avatar';
 import { RoleGuard } from '@/components/RoleGuard';
-import { Plus, Search, Edit, Trash2, Mail, Phone, MapPin, Briefcase, Eye, Download, UserCheck, Link2, Unlink } from 'lucide-react';
-import type { Client } from '@/lib/types';
+import { Plus, Search, Edit, Trash2, Mail, Phone, MapPin, Briefcase, Eye, Download, UserCheck, Link2, Unlink, Loader2 } from 'lucide-react';
+import type { Client, User } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-
-const initialClients: Client[] = [
-  {
-    id: 'c1', tenantId: 'demo', companyName: 'Acme Corporation', contactName: 'Jane Wilson',
-    contactEmail: 'jane@acmecorp.com', phone: '(555) 123-4567', address: '123 Main St, Austin, TX 78701',
-    createdAt: new Date('2026-01-15'), updatedAt: new Date('2026-02-10'),
-  },
-  {
-    id: 'c2', tenantId: 'demo', companyName: 'BuildRight LLC', contactName: 'Tom Harris',
-    contactEmail: 'tom@buildright.com', phone: '(555) 987-6543', address: '456 Oak Ave, Dallas, TX 75201',
-    createdAt: new Date('2026-01-20'), updatedAt: new Date('2026-02-08'),
-  },
-  {
-    id: 'c3', tenantId: 'demo', companyName: 'Metro Services', contactName: 'Anna Kim',
-    contactEmail: 'anna@metroservices.com', phone: '(555) 456-7890', address: '789 Pine Rd, Houston, TX 77001',
-    createdAt: new Date('2026-02-01'), updatedAt: new Date('2026-02-12'),
-  },
-  {
-    id: 'c4', tenantId: 'demo', companyName: 'SafeWork Inc', contactName: 'Robert Chang',
-    contactEmail: 'robert@safework.com', phone: '(555) 321-0987', address: '321 Elm St, San Antonio, TX 78201',
-    createdAt: new Date('2026-02-05'), updatedAt: new Date('2026-02-14'),
-  },
-  {
-    id: 'c5', tenantId: 'demo', companyName: 'PowerGrid Co', contactName: 'Marcus Lee',
-    contactEmail: 'marcus@powergrid.com', phone: '(555) 654-3210', address: '900 Energy Blvd, Corpus Christi, TX 78401',
-    createdAt: new Date('2026-01-10'), updatedAt: new Date('2026-02-16'),
-  },
-];
-
-// Simulated job count per client
-const clientJobCount: Record<string, number> = {
-  c1: 3, c2: 2, c3: 1, c4: 1, c5: 2,
-};
+import { useTenant } from '@/context/TenantContext';
+import {
+  getClients, createClient, updateClient, deleteClient,
+  getJobs, getUsers, updateUser,
+} from '@/lib/firestore';
 
 export default function ClientsPage() {
   const { user } = useAuth();
+  const { tenantId } = useTenant();
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
 
-  const [clients, setClients] = useState<Client[]>(initialClients);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [jobCount, setJobCount] = useState<Record<string, number>>({});
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -78,39 +55,77 @@ export default function ClientsPage() {
     address: '',
   });
 
-  // Link portal user
   const [linkEmail, setLinkEmail] = useState('');
   const [linkError, setLinkError]   = useState('');
   const [linkSuccess, setLinkSuccess] = useState('');
 
-  const handleLinkUser = (e: React.FormEvent) => {
+  const loadData = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    try {
+      const [fetchedClients, fetchedJobs, fetchedUsers] = await Promise.all([
+        getClients(tenantId),
+        getJobs(tenantId),
+        getUsers(tenantId),
+      ]);
+      setClients(fetchedClients);
+      const counts: Record<string, number> = {};
+      for (const job of fetchedJobs) counts[job.clientId] = (counts[job.clientId] ?? 0) + 1;
+      setJobCount(counts);
+      setUsers(fetchedUsers);
+    } catch (err) {
+      console.error('Failed to load clients:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleLinkUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClient) return;
+    if (!selectedClient || !tenantId) return;
     if (!linkEmail.trim()) { setLinkError('Enter an email address.'); return; }
-    // Demo: resolve email → userId (in production: query Firestore users collection)
-    const demoUserMap: Record<string, string> = {
-      'jane@acmecorp.com':    'client-uid-001',
-      'tom@buildright.com':   'client-uid-002',
-      'anna@metroservices.com': 'client-uid-003',
-    };
-    const uid = demoUserMap[linkEmail.toLowerCase()] ?? `uid-${Date.now()}`;
-    setClients((prev) =>
-      prev.map((c) => c.id === selectedClient.id ? { ...c, linkedUserId: uid } : c)
-    );
-    setSelectedClient((prev) => prev ? { ...prev, linkedUserId: uid } : prev);
-    setLinkError('');
-    setLinkSuccess(`Linked to “${linkEmail}” (uid: ${uid})`);
-    setLinkEmail('');
+    const matchedUser = users.find((u) => u.email.toLowerCase() === linkEmail.toLowerCase());
+    if (!matchedUser) {
+      setLinkError('No user found with that email. Ask them to sign up first.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await Promise.all([
+        updateClient(tenantId, selectedClient.id, { linkedUserId: matchedUser.uid }),
+        updateUser(tenantId, matchedUser.uid, { linkedClientId: selectedClient.id }),
+      ]);
+      setClients((prev) => prev.map((c) => c.id === selectedClient.id ? { ...c, linkedUserId: matchedUser.uid } : c));
+      setSelectedClient((prev) => prev ? { ...prev, linkedUserId: matchedUser.uid } : prev);
+      setLinkError('');
+      setLinkSuccess(`Linked to "${matchedUser.displayName}" (${matchedUser.email})`);
+      setLinkEmail('');
+    } catch (err) {
+      console.error('Failed to link user:', err);
+      setLinkError('Failed to link user. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUnlinkUser = () => {
-    if (!selectedClient) return;
-    setClients((prev) =>
-      prev.map((c) => c.id === selectedClient.id ? { ...c, linkedUserId: undefined } : c)
-    );
-    setSelectedClient((prev) => prev ? { ...prev, linkedUserId: undefined } : prev);
-    setLinkSuccess('');
-    setLinkError('');
+  const handleUnlinkUser = async () => {
+    if (!selectedClient || !tenantId) return;
+    const linkedUid = selectedClient.linkedUserId;
+    setSaving(true);
+    try {
+      await updateClient(tenantId, selectedClient.id, { linkedUserId: undefined });
+      if (linkedUid) await updateUser(tenantId, linkedUid, { linkedClientId: undefined });
+      setClients((prev) => prev.map((c) => c.id === selectedClient.id ? { ...c, linkedUserId: undefined } : c));
+      setSelectedClient((prev) => prev ? { ...prev, linkedUserId: undefined } : prev);
+      setLinkSuccess('');
+      setLinkError('');
+    } catch (err) {
+      console.error('Failed to unlink user:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filtered = clients.filter(
@@ -132,37 +147,58 @@ export default function ClientsPage() {
     setEditModalOpen(true);
   };
 
-  const handleEditSave = (e: React.FormEvent) => {
+  const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientToEdit) return;
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === clientToEdit.id ? { ...c, ...editForm, updatedAt: new Date() } : c
-      )
-    );
-    setEditModalOpen(false);
-    setClientToEdit(null);
+    if (!clientToEdit || !tenantId) return;
+    setSaving(true);
+    try {
+      await updateClient(tenantId, clientToEdit.id, editForm);
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientToEdit.id ? { ...c, ...editForm, updatedAt: new Date() } : c
+        )
+      );
+      setEditModalOpen(false);
+      setClientToEdit(null);
+    } catch (err) {
+      console.error('Failed to update client:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newClient: Client = {
-      id: `c${Date.now()}`,
-      tenantId: 'demo',
-      ...newForm,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setClients((prev) => [...prev, newClient]);
-    setNewForm({ companyName: '', contactName: '', contactEmail: '', phone: '', address: '' });
-    setModalOpen(false);
+    if (!tenantId) return;
+    setSaving(true);
+    try {
+      const docRef = await createClient(tenantId, newForm);
+      setClients((prev) => [...prev, {
+        id: docRef.id, tenantId, ...newForm,
+        createdAt: new Date(), updatedAt: new Date(),
+      }]);
+      setNewForm({ companyName: '', contactName: '', contactEmail: '', phone: '', address: '' });
+      setModalOpen(false);
+    } catch (err) {
+      console.error('Failed to create client:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    if (!clientToDelete) return;
-    setClients((prev) => prev.filter((c) => c.id !== clientToDelete.id));
-    setDeleteConfirmOpen(false);
-    setClientToDelete(null);
+  const handleDelete = async () => {
+    if (!clientToDelete || !tenantId) return;
+    setSaving(true);
+    try {
+      await deleteClient(tenantId, clientToDelete.id);
+      setClients((prev) => prev.filter((c) => c.id !== clientToDelete.id));
+      setDeleteConfirmOpen(false);
+      setClientToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete client:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const columns = [
@@ -211,7 +247,7 @@ export default function ClientsPage() {
       render: (c: Client) => (
         <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-medium text-teal-700">
           <Briefcase className="h-3 w-3" />
-          {clientJobCount[c.id] ?? 0}
+          {jobCount[c.id] ?? 0}
         </span>
       ),
     },
@@ -303,8 +339,14 @@ export default function ClientsPage() {
         columns={columns}
         data={filtered}
         onRowClick={(c) => { setSelectedClient(c); setSlideOpen(true); }}
-        emptyMessage="No clients found. Add your first client to get started."
+        emptyMessage={loading ? 'Loading clients…' : 'No clients found. Add your first client to get started.'}
       />
+
+      {loading && (
+        <div className="flex items-center justify-center py-20 text-[#9CA3AF]">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      )}
 
       {/* Client Detail Slide-Over */}
       <SlideOverPanel
@@ -348,7 +390,7 @@ export default function ClientsPage() {
                 <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280] mb-2">Activity</p>
                 <div className="flex items-center justify-between">
                   <span className="text-[#374151]">Active Jobs</span>
-                  <span className="font-semibold text-teal-700">{clientJobCount[selectedClient.id] ?? 0}</span>
+                  <span className="font-semibold text-teal-700">{jobCount[selectedClient.id] ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-[#374151]">Last Updated</span>

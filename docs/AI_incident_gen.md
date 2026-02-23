@@ -77,13 +77,18 @@ ${audioBlob ? 'A voice note was recorded and will be transcribed when the AI end
 *Draft saved to Firestore (doc: ${docRef.id}) — AI processing pending • ${new Date().toLocaleString()}*
 ```
 
-Integration notes & next steps to connect real AI
-- Current behavior: placeholder generation is simulated client-side (`handleGenerate` uses a timeout and inserts the Markdown string into state). Voice is recorded to a Blob in memory but not uploaded; photos are only saved as filenames.
-- To integrate a real AI endpoint (Gemini, OpenAI, etc.):
-	1. Implement a server-side API route to call the chosen LLM (avoid exposing keys to client).
-	2. In `handleGenerate`, upload photos to Firebase Storage (if you want URLs), upload the voice note (or run transcription), then pass the text, photo URLs, and transcription to the server AI endpoint.
-	3. Replace the placeholder string with the AI response (Markdown) and call `updateIncidentReport` to persist `aiGeneratedReport`.
-	4. Optionally add status tracking (e.g., `aiProcessing: boolean`) to the incident report document.
+Integration notes & current status
+- **Current behavior (LIVE):** `handleGenerate` does the following:
+	1. Saves a draft `IncidentReport` document to Firestore via `createIncidentReport` (status: `open`).
+	2. Calls the deployed Cloud Function at `https://us-central1-field-pilot-tech.cloudfunctions.net/genai` with `type: 'incident'` and a structured JSON payload.
+	3. Renders the Markdown response from the Cloud Function in the UI.
+	4. On "Save Report", calls `updateIncidentReport` to persist `aiGeneratedReport` back to Firestore.
+- Voice notes are recorded to a browser `Blob` in memory but **not yet uploaded** to Firebase Storage — only `voiceNoteRecorded: boolean` is saved.
+- Photos are captured as client-side object URLs; only filenames are saved to Firestore until Storage upload is wired.
+- Remaining work to fully close the loop:
+	1. Upload audio blob to Firebase Storage and pass the download URL (or transcription) to the Cloud Function payload.
+	2. Upload photos to Firebase Storage and replace filename stubs with real URLs in Firestore.
+	3. Optionally add an `aiProcessing: boolean` flag to the document to show a spinner across sessions.
 
 Developer pointers
 - Edit generation flow: [src/app/(app)/ai/incident/page.tsx](src/app/(app)/ai/incident/page.tsx#L160-L210)

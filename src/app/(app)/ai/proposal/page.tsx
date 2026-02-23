@@ -16,6 +16,7 @@ import {
   Plus,
   Edit3,
   Download,
+  Trash2,
 } from 'lucide-react';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
@@ -30,7 +31,6 @@ export default function AIProposalGeneratorPage() {
   const [clientName, setClientName] = useState('');
   const [description, setDescription] = useState('');
   const [specs, setSpecs] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
   const [photos, setPhotos] = useState<{ name: string; preview: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,16 +42,103 @@ export default function AIProposalGeneratorPage() {
   const [selectedJobId, setSelectedJobId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Speech-to-text (Web Speech API) ──────────────────────────────────────
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const shouldRestartRef = useRef(false); // iOS Safari stops on silence — auto-restart when true
+  const finalAccumRef = useRef('');       // keep accumulator in sync across restarts
+  const [listeningTarget, setListeningTarget] = useState<'description' | 'specs' | null>(null);
+  const isListening = listeningTarget !== null;
+  const [interimText, setInterimText] = useState('');
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
+  const [speechError, setSpeechError] = useState('');
+
+  // Must run client-side only — window is undefined during SSR
+  useEffect(() => {
+    setIsSpeechSupported('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+  }, []);
+
+  const startListening = (target: 'description' | 'specs') => {
+    setSpeechError('');
+    // Stop any active session before starting a new one
+    if (recognitionRef.current) { shouldRestartRef.current = false; recognitionRef.current.stop(); }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: new () => SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { setSpeechError('Speech recognition not supported. Use Chrome or Edge.'); return; }
+    // Seed the accumulator from the current value of the target field
+    finalAccumRef.current = target === 'description' ? description : specs;
+    shouldRestartRef.current = true;
+
+    const createAndStart = () => {
+      const rec = new SR();
+      recognitionRef.current = rec;
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+      rec.onresult = (e) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) {
+            finalAccumRef.current += (finalAccumRef.current ? ' ' : '') + t.trim();
+            if (target === 'description') setDescription(finalAccumRef.current);
+            else setSpecs(finalAccumRef.current);
+          } else {
+            interim = t;
+          }
+        }
+        setInterimText(interim);
+      };
+      rec.onerror = (e) => {
+        console.error('[Speech] Error:', e.error);
+        if (e.error === 'not-allowed') {
+          setSpeechError('Microphone access denied. Click the mic icon in your browser address bar to allow it.');
+          shouldRestartRef.current = false;
+          setListeningTarget(null);
+        } else if (e.error === 'no-speech') {
+          // iOS fires no-speech when it times out — handled by onend restart below
+        } else {
+          setSpeechError(`Speech error: ${e.error}`);
+          shouldRestartRef.current = false;
+          setListeningTarget(null);
+        }
+        setInterimText('');
+      };
+      rec.onend = () => {
+        setInterimText('');
+        if (shouldRestartRef.current) {
+          // iOS Safari drops continuous mode on silence — immediately restart
+          setTimeout(createAndStart, 150);
+        } else {
+          setListeningTarget(null);
+        }
+      };
+      rec.start();
+    };
+
+    createAndStart();
+    setListeningTarget(target);
+  };
+
+  const stopListening = () => {
+    shouldRestartRef.current = false;
+    recognitionRef.current?.stop();
+    setListeningTarget(null);
+    setInterimText('');
+  };
+
+  const handleToggleListening = (target: 'description' | 'specs') => {
+    if (listeningTarget === target) stopListening();
+    else startListening(target);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => { return () => { recognitionRef.current?.stop(); }; }, []);
+
   // Load available jobs to link proposal to
   useEffect(() => {
     if (!tenantId) return;
     getJobs(tenantId).then(setJobs).catch(console.error);
   }, [tenantId]);
-
-  const handleToggleRecording = () => {
-    setIsRecording(!isRecording);
-    // TODO: integrate Web Speech API for voice capture
-  };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -213,40 +300,58 @@ export default function AIProposalGeneratorPage() {
               </div>
             </Card>
 
-            {/* Voice Recording */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Voice Description</CardTitle>
-              </CardHeader>
-              <div className="flex flex-col items-center gap-4 py-6">
-                <button
-                  onClick={handleToggleRecording}
-                  className={`flex h-20 w-20 items-center justify-center rounded-full transition-all ${
-                    isRecording
-                      ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse'
-                      : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
-                  }`}
-                >
-                  {isRecording ? <MicOff className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
-                </button>
-                <p className="text-sm text-[#6B7280]">
-                  {isRecording ? 'Recording… tap to stop' : 'Describe the project scope verbally'}
-                </p>
-              </div>
-            </Card>
-
-            {/* Text Description */}
+            {/* Voice → Description */}
             <Card>
               <CardHeader>
                 <CardTitle>Project Description</CardTitle>
               </CardHeader>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe the project — scope, goals, site conditions, special requirements…"
-                rows={4}
-                className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
-              />
+              <div className="space-y-4">
+                {isSpeechSupported && (
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => handleToggleListening('description')}
+                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full transition-all ${
+                        listeningTarget === 'description'
+                          ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse'
+                          : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
+                      }`}
+                    >
+                      {listeningTarget === 'description' ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      {listeningTarget === 'description' ? (
+                        <p className="text-sm font-medium text-red-600">● Listening… speak now</p>
+                      ) : description ? (
+                        <p className="text-sm font-medium text-teal-700">✓ Transcript captured — tap mic to add more</p>
+                      ) : (
+                        <p className="text-sm text-[#6B7280]">Tap to dictate the project scope</p>
+                      )}
+                      {listeningTarget === 'description' && interimText && (
+                        <p className="mt-0.5 text-xs italic text-[#9CA3AF] truncate">{interimText}…</p>
+                      )}
+                    </div>
+                    {description && (
+                      <button
+                        onClick={() => { stopListening(); setDescription(''); setSpeechError(''); }}
+                        className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
+                        title="Clear"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {speechError && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{speechError}</p>
+                )}
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the project — scope, goals, site conditions, special requirements… (or tap mic to dictate)"
+                  rows={5}
+                  className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
             </Card>
           </div>
 
@@ -257,13 +362,50 @@ export default function AIProposalGeneratorPage() {
               <CardHeader>
                 <CardTitle>Technical Specifications</CardTitle>
               </CardHeader>
-              <textarea
-                value={specs}
-                onChange={(e) => setSpecs(e.target.value)}
-                placeholder="Panel size, circuit requirements, conduit type, voltage, code references…"
-                rows={4}
-                className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
-              />
+              <div className="space-y-4">
+                {isSpeechSupported && (
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => handleToggleListening('specs')}
+                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full transition-all ${
+                        listeningTarget === 'specs'
+                          ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse'
+                          : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
+                      }`}
+                    >
+                      {listeningTarget === 'specs' ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      {listeningTarget === 'specs' ? (
+                        <p className="text-sm font-medium text-red-600">● Listening… speak now</p>
+                      ) : specs ? (
+                        <p className="text-sm font-medium text-teal-700">✓ Specs captured — tap mic to add more</p>
+                      ) : (
+                        <p className="text-sm text-[#6B7280]">Tap to dictate technical specs</p>
+                      )}
+                      {listeningTarget === 'specs' && interimText && (
+                        <p className="mt-0.5 text-xs italic text-[#9CA3AF] truncate">{interimText}…</p>
+                      )}
+                    </div>
+                    {specs && (
+                      <button
+                        onClick={() => { stopListening(); setSpecs(''); setSpeechError(''); }}
+                        className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
+                        title="Clear"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+                <textarea
+                  value={specs}
+                  onChange={(e) => setSpecs(e.target.value)}
+                  placeholder="Panel size, circuit requirements, conduit type, voltage, code references…"
+                  rows={4}
+                  className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
             </Card>
 
             {/* Photo Upload */}

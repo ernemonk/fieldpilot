@@ -8,8 +8,6 @@ import { Select } from '@/components/ui/FormFields';
 import {
   Mic,
   MicOff,
-  Play,
-  Square,
   Camera,
   Sparkles,
   Save,
@@ -19,7 +17,6 @@ import {
   X,
   Download,
   CheckCircle,
-  AlertCircle,
 } from 'lucide-react';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
@@ -94,64 +91,80 @@ export default function AIIncidentReportPage() {
     });
   };
 
-  // ── Audio recording ───────────────────────────────────────────────────────
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // ── Speech-to-text (Web Speech API) ──────────────────────────────────────
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const shouldRestartRef = useRef(false); // iOS Safari stops on silence — auto-restart when true
+  const finalAccumRef = useRef('');       // keep accumulator in sync across restarts
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [interimText, setInterimText] = useState('');
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
+  useEffect(() => {
+    setIsSpeechSupported('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+  }, []);
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-      const mr = new MediaRecorder(stream);
-      mediaRecorderRef.current = mr;
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        stream.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
+  const startListening = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: new () => SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { console.warn('[Speech] SpeechRecognition not supported in this browser'); return; }
+    // Seed the accumulator from whatever is already in the description box
+    finalAccumRef.current = description;
+    shouldRestartRef.current = true;
+
+    const createAndStart = () => {
+      const rec = new SR();
+      recognitionRef.current = rec;
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+      rec.onresult = (e) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) {
+            finalAccumRef.current += (finalAccumRef.current ? ' ' : '') + t.trim();
+            setDescription(finalAccumRef.current);
+            setVoiceTranscript(finalAccumRef.current);
+          } else {
+            interim = t;
+          }
+        }
+        setInterimText(interim);
       };
-      mr.start(250);
-      setIsRecording(true);
-      setRecordingSeconds(0);
-      timerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
-    } catch {
-      alert('Could not access microphone. Please allow microphone permission.');
-    }
+      rec.onerror = (e) => {
+        console.error('[Speech] Error:', e.error);
+        if (e.error !== 'no-speech') {
+          // no-speech is expected on iOS timeout — handled by onend restart
+          shouldRestartRef.current = false;
+          setIsListening(false);
+        }
+        setInterimText('');
+      };
+      rec.onend = () => {
+        setInterimText('');
+        if (shouldRestartRef.current) {
+          // iOS Safari drops continuous mode on silence — immediately restart
+          setTimeout(createAndStart, 150);
+        } else {
+          setIsListening(false);
+        }
+      };
+      rec.start();
+    };
+
+    createAndStart();
+    setIsListening(true);
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) mediaRecorderRef.current.stop();
-    setIsRecording(false);
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  const stopListening = () => {
+    shouldRestartRef.current = false;
+    recognitionRef.current?.stop();
+    setIsListening(false);
+    setInterimText('');
   };
 
-  const handleToggleRecording = () => { if (isRecording) stopRecording(); else startRecording(); };
-
-  const discardAudio = () => {
-    stopRecording();
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    setAudioBlob(null); setAudioUrl(null); setRecordingSeconds(0);
-  };
-
-  const handlePlayPause = () => {
-    if (!audioRef.current) return;
-    if (audioPlaying) { audioRef.current.pause(); setAudioPlaying(false); }
-    else { audioRef.current.play(); setAudioPlaying(true); }
-  };
-
-  const formatSecs = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const handleToggleListening = () => { if (isListening) stopListening(); else startListening(); };
 
   // ── Firestore ─────────────────────────────────────────────────────────────
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
@@ -167,10 +180,8 @@ export default function AIIncidentReportPage() {
   // ── Cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
       photos.forEach((p) => URL.revokeObjectURL(p.preview));
-      if (timerRef.current) clearInterval(timerRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      recognitionRef.current?.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -188,7 +199,7 @@ export default function AIIncidentReportPage() {
         severity,
         description,
         photos: photos.map((p) => p.name),
-        voiceNoteRecorded: !!audioBlob,
+        voiceTranscript: voiceTranscript || undefined,
         aiGeneratedReport: undefined,
         resolutionStatus: 'open',
       });
@@ -213,7 +224,7 @@ export default function AIIncidentReportPage() {
               severity,
               description,
               photos: photos.map((p) => p.name),
-              transcription: null,
+              transcription: voiceTranscript || null,
               location: null,
               witnesses: [],
             },
@@ -301,63 +312,53 @@ export default function AIIncidentReportPage() {
               />
             </Card>
 
-            {/* Voice Recording */}
+            {/* Incident Description */}
             <Card>
-              <CardHeader><CardTitle>Voice Description</CardTitle></CardHeader>
-              <div className="flex flex-col items-center gap-4 py-4">
-                <button
-                  onClick={handleToggleRecording}
-                  className={`flex h-20 w-20 items-center justify-center rounded-full transition-all ${
-                    isRecording
-                      ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse'
-                      : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
-                  }`}
-                >
-                  {isRecording ? <MicOff className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
-                </button>
-                {isRecording && (
-                  <p className="font-mono text-sm text-red-600">● Recording… {formatSecs(recordingSeconds)}</p>
-                )}
-                {!isRecording && !audioBlob && (
-                  <p className="text-sm text-[#6B7280]">Tap to record a voice description</p>
-                )}
-              </div>
-
-              {audioUrl && audioBlob && !isRecording && (
-                <div className="mt-2 rounded-lg border border-[#E5E7EB] bg-gray-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={handlePlayPause}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700 transition-colors"
-                      >
-                        {audioPlaying ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                      </button>
-                      <div>
-                        <p className="text-sm font-medium text-[#111827]">Voice note recorded</p>
-                        <p className="text-xs text-[#6B7280]">{formatSecs(recordingSeconds)} · {formatBytes(audioBlob.size)}</p>
-                      </div>
-                    </div>
-                    <button onClick={discardAudio} className="text-[#9CA3AF] hover:text-red-500 transition-colors" title="Discard">
-                      <Trash2 className="h-4 w-4" />
+              <CardHeader><CardTitle>Incident Description</CardTitle></CardHeader>
+              <div className="space-y-4">
+                {isSpeechSupported && (
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={handleToggleListening}
+                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full transition-all ${
+                        isListening
+                          ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse'
+                          : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
+                      }`}
+                    >
+                      {isListening ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
                     </button>
+                    <div className="flex-1 min-w-0">
+                      {isListening ? (
+                        <p className="text-sm font-medium text-red-600">● Listening… speak now</p>
+                      ) : description ? (
+                        <p className="text-sm font-medium text-teal-700">✓ Captured — tap mic to add more</p>
+                      ) : (
+                        <p className="text-sm text-[#6B7280]">Tap to dictate the incident</p>
+                      )}
+                      {interimText && (
+                        <p className="mt-0.5 text-xs italic text-[#9CA3AF] truncate">{interimText}…</p>
+                      )}
+                    </div>
+                    {description && (
+                      <button
+                        onClick={() => { stopListening(); setDescription(''); setVoiceTranscript(''); }}
+                        className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
+                        title="Clear"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
-                  <audio ref={audioRef} src={audioUrl} className="hidden"
-                    onEnded={() => setAudioPlaying(false)} onPause={() => setAudioPlaying(false)} />
-                </div>
-              )}
-            </Card>
-
-            {/* Text Description */}
-            <Card>
-              <CardHeader><CardTitle>Text Description</CardTitle></CardHeader>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe the incident — what happened, where, when, any injuries or damage…"
-                rows={5}
-                className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
-              />
+                )}
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the incident — what happened, where, when, any injuries or damage… (or tap mic to dictate)"
+                  rows={5}
+                  className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
             </Card>
 
             {/* Severity */}
@@ -411,14 +412,9 @@ export default function AIIncidentReportPage() {
               )}
             </Card>
 
-            <div className="rounded-lg border border-[#E5E7EB] bg-amber-50 p-4 text-xs text-amber-700 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span><strong>AI endpoint pending.</strong> Clicking Generate saves your inputs to Firestore and produces a placeholder report. Gemini processing connects later.</span>
-            </div>
-
             <Button
               onClick={handleGenerate}
-              disabled={isProcessing || (!description && photos.length === 0 && !audioBlob)}
+              disabled={isProcessing || (!description && photos.length === 0 && !voiceTranscript)}
               className="w-full py-4 text-base"
               icon={isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
             >

@@ -14,6 +14,7 @@ import {
   DocumentData,
   QueryConstraint,
   setDoc,
+  deleteField,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
@@ -58,6 +59,16 @@ function docToEntity<T>(docData: DocumentData, id: string): T {
     }
   }
   return data as T;
+}
+
+// Convert undefined values to Firestore deleteField() so optional fields are
+// actually removed from documents rather than silently skipped.
+function sanitizeUpdate(data: Record<string, unknown>): DocumentData {
+  const result: DocumentData = {};
+  for (const [key, value] of Object.entries(data)) {
+    result[key] = value === undefined ? deleteField() : value;
+  }
+  return result;
 }
 
 // ============================================
@@ -107,7 +118,7 @@ export async function createUser(tenantId: string, user: Omit<User, 'createdAt'>
 }
 
 export async function updateUser(tenantId: string, uid: string, data: Partial<User>) {
-  await updateDoc(doc(db, usersCol(tenantId), uid), data as DocumentData);
+  await updateDoc(doc(db, usersCol(tenantId), uid), sanitizeUpdate(data as Record<string, unknown>));
 }
 
 // ============================================
@@ -127,20 +138,22 @@ export async function getClient(tenantId: string, clientId: string): Promise<Cli
   return docToEntity<Client>(snap.data(), snap.id);
 }
 
-export async function createClient(tenantId: string, data: Omit<Client, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>) {
-  return addDoc(collection(db, clientsCol(tenantId)), {
+export async function createClient(tenantId: string, data: Omit<Client, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>): Promise<Client> {
+  const now = Timestamp.now();
+  const docRef = await addDoc(collection(db, clientsCol(tenantId)), {
     ...data,
     tenantId,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    createdAt: now,
+    updatedAt: now,
   });
+  return { ...data, id: docRef.id, tenantId, createdAt: now.toDate(), updatedAt: now.toDate() };
 }
 
 export async function updateClient(tenantId: string, clientId: string, data: Partial<Client>) {
   await updateDoc(doc(db, clientsCol(tenantId), clientId), {
-    ...data,
+    ...sanitizeUpdate(data as Record<string, unknown>),
     updatedAt: Timestamp.now(),
-  } as DocumentData);
+  });
 }
 
 export async function deleteClient(tenantId: string, clientId: string) {
@@ -163,13 +176,15 @@ export async function getJob(tenantId: string, jobId: string): Promise<Job | nul
   return docToEntity<Job>(snap.data(), snap.id);
 }
 
-export async function createJob(tenantId: string, data: Omit<Job, 'id' | 'createdAt' | 'lastUpdated' | 'tenantId'>) {
-  return addDoc(collection(db, jobsCol(tenantId)), {
+export async function createJob(tenantId: string, data: Omit<Job, 'id' | 'createdAt' | 'lastUpdated' | 'tenantId'>): Promise<Job> {
+  const now = Timestamp.now();
+  const docRef = await addDoc(collection(db, jobsCol(tenantId)), {
     ...data,
     tenantId,
-    createdAt: Timestamp.now(),
-    lastUpdated: Timestamp.now(),
+    createdAt: now,
+    lastUpdated: now,
   });
+  return { ...data, id: docRef.id, tenantId, createdAt: now.toDate(), lastUpdated: now.toDate() };
 }
 
 export async function updateJob(tenantId: string, jobId: string, data: Partial<Job>) {
@@ -219,13 +234,15 @@ export async function getProposal(tenantId: string, proposalId: string): Promise
   return docToEntity<Proposal>(snap.data(), snap.id);
 }
 
-export async function createProposal(tenantId: string, data: Omit<Proposal, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>) {
-  return addDoc(collection(db, proposalsCol(tenantId)), {
+export async function createProposal(tenantId: string, data: Omit<Proposal, 'id' | 'createdAt' | 'updatedAt' | 'tenantId'>): Promise<Proposal> {
+  const now = Timestamp.now();
+  const docRef = await addDoc(collection(db, proposalsCol(tenantId)), {
     ...data,
     tenantId,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    createdAt: now,
+    updatedAt: now,
   });
+  return { ...data, id: docRef.id, tenantId, createdAt: now.toDate(), updatedAt: now.toDate() };
 }
 
 export async function updateProposal(tenantId: string, proposalId: string, data: Partial<Proposal>) {
