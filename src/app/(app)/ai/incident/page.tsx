@@ -137,13 +137,20 @@ export default function AIIncidentReportPage() {
         setInterimText(interim);
       };
       rec.onerror = (e) => {
-        console.error('[Speech] Error:', e.error);
-        if (e.error !== 'no-speech') {
-          // no-speech is expected on iOS timeout — handled by onend restart
+        if (e.error === 'not-allowed') {
+          console.error('[Speech] Microphone access denied.');
           shouldRestartRef.current = false;
           setIsListening(false);
+          setInterimText('');
+        } else if (e.error === 'no-speech') {
+          // Expected: browser timed out waiting for audio — onend will restart
+          setInterimText('');
+        } else {
+          console.error('[Speech] Error:', e.error);
+          shouldRestartRef.current = false;
+          setIsListening(false);
+          setInterimText('');
         }
-        setInterimText('');
       };
       rec.onend = () => {
         setInterimText('');
@@ -198,13 +205,12 @@ export default function AIIncidentReportPage() {
       const jobTitle = jobs.find((j) => j.id === selectedJobId)?.title;
       const docRef = await createIncidentReport(tenantId, {
         jobId: selectedJobId || '__unassigned__',
-        jobTitle,
+        ...(jobTitle ? { jobTitle } : {}),
         operatorId: user?.uid ?? '',
         severity,
         description,
         photos: photos.map((p) => p.name),
-        voiceTranscript: voiceTranscript || undefined,
-        aiGeneratedReport: undefined,
+        ...(voiceTranscript ? { voiceTranscript } : {}),
         resolutionStatus: 'open',
       });
       setSavedDocId(docRef.id);

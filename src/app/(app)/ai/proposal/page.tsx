@@ -1,5 +1,12 @@
 'use client';
 
+declare global {
+  interface Window {
+    SpeechRecognition: typeof SpeechRecognition;
+    webkitSpeechRecognition: typeof SpeechRecognition;
+  }
+}
+
 import { useState, useRef, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -42,7 +49,7 @@ export default function AIProposalGeneratorPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Speech-to-text (Web Speech API) ──────────────────────────────────────
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const shouldRestartRef = useRef(false); // iOS Safari stops on silence — auto-restart when true
   const finalAccumRef = useRef('');       // keep accumulator in sync across restarts
   const [listeningTarget, setListeningTarget] = useState<'project' | null>(null);
