@@ -17,6 +17,10 @@ import {
   X,
   Download,
   CheckCircle,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldX,
+  Flame,
 } from 'lucide-react';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
@@ -363,20 +367,32 @@ export default function AIIncidentReportPage() {
 
             {/* Severity */}
             <Card>
-              <CardHeader><CardTitle>Severity</CardTitle></CardHeader>
-              <div className="flex gap-2">
-                {(['low', 'medium', 'high', 'critical'] as IncidentSeverity[]).map((level) => (
-                  <button key={level} onClick={() => setSeverity(level)}
-                    className={`flex-1 rounded-lg border py-2 text-sm font-medium capitalize transition-colors ${
-                      severity === level
-                        ? level === 'critical' ? 'border-red-600 bg-red-50 text-red-700'
-                          : level === 'high' ? 'border-orange-500 bg-orange-50 text-orange-700'
-                          : level === 'medium' ? 'border-amber-500 bg-amber-50 text-amber-700'
-                          : 'border-green-500 bg-green-50 text-green-700'
-                        : 'border-[#E5E7EB] text-[#6B7280] hover:border-[#D1D5DB]'
-                    }`}
-                  >{level}</button>
-                ))}
+              <CardHeader><CardTitle>How Serious Is It?</CardTitle></CardHeader>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { level: 'low' as IncidentSeverity, label: 'Low', desc: 'Minor issue, no risk', icon: ShieldCheck, ring: 'ring-green-300', bg: 'bg-green-50', bgActive: 'bg-green-100', border: 'border-green-400', text: 'text-green-700', iconColor: 'text-green-500' },
+                  { level: 'medium' as IncidentSeverity, label: 'Medium', desc: 'Needs attention soon', icon: ShieldAlert, ring: 'ring-amber-300', bg: 'bg-amber-50', bgActive: 'bg-amber-100', border: 'border-amber-400', text: 'text-amber-700', iconColor: 'text-amber-500' },
+                  { level: 'high' as IncidentSeverity, label: 'High', desc: 'Serious — act now', icon: ShieldX, ring: 'ring-orange-300', bg: 'bg-orange-50', bgActive: 'bg-orange-100', border: 'border-orange-500', text: 'text-orange-700', iconColor: 'text-orange-500' },
+                  { level: 'critical' as IncidentSeverity, label: 'Critical', desc: 'Emergency — stop work', icon: Flame, ring: 'ring-red-400', bg: 'bg-red-50', bgActive: 'bg-red-100', border: 'border-red-500', text: 'text-red-700', iconColor: 'text-red-500' },
+                ]).map((s) => {
+                  const Icon = s.icon;
+                  const active = severity === s.level;
+                  return (
+                    <button
+                      key={s.level}
+                      onClick={() => setSeverity(s.level)}
+                      className={`flex flex-col items-center gap-2 rounded-xl border-2 px-3 py-4 transition-all ${
+                        active
+                          ? `${s.border} ${s.bgActive} ${s.text} ring-2 ${s.ring} shadow-sm`
+                          : `border-[#E5E7EB] ${s.bg} text-[#6B7280] hover:${s.border} hover:shadow-sm`
+                      }`}
+                    >
+                      <Icon className={`h-7 w-7 ${active ? s.iconColor : 'text-[#9CA3AF]'}`} />
+                      <span className="text-sm font-bold">{s.label}</span>
+                      <span className={`text-[11px] leading-tight ${active ? s.text : 'text-[#9CA3AF]'}`}>{s.desc}</span>
+                    </button>
+                  );
+                })}
               </div>
             </Card>
           </div>

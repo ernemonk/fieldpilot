@@ -96,45 +96,59 @@ export function OwnerDashboard({ user }: { user: User | null }) {
       />
 
       {/* Top-level KPIs */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Revenue Pipeline"
           value={`$${(revenuePipeline / 1000).toFixed(0)}K`}
           icon={<DollarSign className="h-5 w-5" />}
+          iconBg="bg-emerald-50"
+          iconColor="text-emerald-600"
         />
         <StatCard
           label="Active Jobs"
           value={activeJobs.length}
           icon={<Briefcase className="h-5 w-5" />}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
         />
         <StatCard
           label="Total Clients"
           value={clients.length}
           icon={<Users className="h-5 w-5" />}
+          iconBg="bg-violet-50"
+          iconColor="text-violet-600"
         />
         <StatCard
           label="Proposal Conversion"
           value={`${conversionRate}%`}
           icon={<BarChart3 className="h-5 w-5" />}
+          iconBg="bg-amber-50"
+          iconColor="text-amber-600"
         />
       </div>
 
       {/* Second row */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-8 grid grid-cols-3 gap-4">
         <StatCard
           label="Total Jobs"
           value={jobs.length}
           icon={<Briefcase className="h-5 w-5" />}
+          iconBg="bg-teal-50"
+          iconColor="text-teal-600"
         />
         <StatCard
           label="Pending Proposals"
           value={pendingProposals.length}
           icon={<FileText className="h-5 w-5" />}
+          iconBg="bg-pink-50"
+          iconColor="text-pink-600"
         />
         <StatCard
           label="Operators"
           value={operators.length}
           icon={<Users className="h-5 w-5" />}
+          iconBg="bg-sky-50"
+          iconColor="text-sky-600"
         />
       </div>
 
@@ -170,24 +184,28 @@ export function OwnerDashboard({ user }: { user: User | null }) {
             </CardHeader>
             <div className="space-y-2">
               <Link href="/jobs" className="block">
-                <Button variant="secondary" className="w-full justify-start" icon={<Briefcase className="h-4 w-4" />}>
+                <button className="flex w-full items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700 transition-all hover:bg-blue-100 hover:shadow-sm">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-white"><Briefcase className="h-4 w-4" /></div>
                   Create Job
-                </Button>
+                </button>
               </Link>
               <Link href="/proposals" className="block">
-                <Button variant="secondary" className="w-full justify-start" icon={<FileText className="h-4 w-4" />}>
+                <button className="flex w-full items-center gap-3 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-medium text-violet-700 transition-all hover:bg-violet-100 hover:shadow-sm">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500 text-white"><FileText className="h-4 w-4" /></div>
                   Create Proposal
-                </Button>
+                </button>
               </Link>
               <Link href="/ai/proposal" className="block">
-                <Button variant="secondary" className="w-full justify-start" icon={<Sparkles className="h-4 w-4" />}>
+                <button className="flex w-full items-center gap-3 rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm font-medium text-teal-700 transition-all hover:bg-teal-100 hover:shadow-sm">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500 text-white"><Sparkles className="h-4 w-4" /></div>
                   AI Proposal Generator
-                </Button>
+                </button>
               </Link>
               <Link href="/settings" className="block">
-                <Button variant="secondary" className="w-full justify-start" icon={<UserPlus className="h-4 w-4" />}>
+                <button className="flex w-full items-center gap-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 transition-all hover:bg-amber-100 hover:shadow-sm">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white"><UserPlus className="h-4 w-4" /></div>
                   Invite User
-                </Button>
+                </button>
               </Link>
             </div>
           </Card>

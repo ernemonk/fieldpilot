@@ -29,8 +29,7 @@ export default function AIProposalGeneratorPage() {
   const tenantId = user?.tenantId ?? '';
   const [projectName, setProjectName] = useState('');
   const [clientName, setClientName] = useState('');
-  const [description, setDescription] = useState('');
-  const [specs, setSpecs] = useState('');
+  const [projectText, setProjectText] = useState('');
   const [photos, setPhotos] = useState<{ name: string; preview: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,7 +45,7 @@ export default function AIProposalGeneratorPage() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldRestartRef = useRef(false); // iOS Safari stops on silence — auto-restart when true
   const finalAccumRef = useRef('');       // keep accumulator in sync across restarts
-  const [listeningTarget, setListeningTarget] = useState<'description' | 'specs' | null>(null);
+  const [listeningTarget, setListeningTarget] = useState<'project' | null>(null);
   const isListening = listeningTarget !== null;
   const [interimText, setInterimText] = useState('');
   const [isSpeechSupported, setIsSpeechSupported] = useState(false);
@@ -57,15 +56,15 @@ export default function AIProposalGeneratorPage() {
     setIsSpeechSupported('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
   }, []);
 
-  const startListening = (target: 'description' | 'specs') => {
+  const startListening = (target: 'project') => {
     setSpeechError('');
     // Stop any active session before starting a new one
     if (recognitionRef.current) { shouldRestartRef.current = false; recognitionRef.current.stop(); }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR: new () => SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { setSpeechError('Speech recognition not supported. Use Chrome or Edge.'); return; }
-    // Seed the accumulator from the current value of the target field
-    finalAccumRef.current = target === 'description' ? description : specs;
+    // Seed the accumulator from the current value of the project textarea
+    finalAccumRef.current = projectText;
     shouldRestartRef.current = true;
 
     const createAndStart = () => {
@@ -78,10 +77,9 @@ export default function AIProposalGeneratorPage() {
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) {
+            if (e.results[i].isFinal) {
             finalAccumRef.current += (finalAccumRef.current ? ' ' : '') + t.trim();
-            if (target === 'description') setDescription(finalAccumRef.current);
-            else setSpecs(finalAccumRef.current);
+            setProjectText(finalAccumRef.current);
           } else {
             interim = t;
           }
@@ -126,7 +124,7 @@ export default function AIProposalGeneratorPage() {
     setInterimText('');
   };
 
-  const handleToggleListening = (target: 'description' | 'specs') => {
+  const handleToggleListening = (target: 'project') => {
     if (listeningTarget === target) stopListening();
     else startListening(target);
   };
@@ -172,13 +170,8 @@ export default function AIProposalGeneratorPage() {
             payload: {
               projectName,
               clientName,
-              description,
-              specs,
+              text: projectText,
               photos: photos.map((p) => p.name),
-              budgetRange: null,
-              preferredTimeline: null,
-              siteConstraints: null,
-              additionalNotes: null,
             },
           }),
         }
@@ -201,7 +194,7 @@ export default function AIProposalGeneratorPage() {
     try {
       const ref = await createProposal(tenantId, {
         jobId: selectedJobId || '',
-        specsJson: { projectName, clientName, description, specs },
+        specsJson: { projectName, clientName, projectText },
         images: photos.map((p) => p.name),
         aiGeneratedText: isEditing ? editableProposal : (generatedProposal ?? ''),
         priceEstimate: 0,
@@ -300,39 +293,37 @@ export default function AIProposalGeneratorPage() {
               </div>
             </Card>
 
-            {/* Voice → Description */}
+            {/* Single consolidated project input (text + mic) */}
             <Card>
               <CardHeader>
-                <CardTitle>Project Description</CardTitle>
+                <CardTitle>Tell Us About the Project</CardTitle>
               </CardHeader>
               <div className="space-y-4">
                 {isSpeechSupported && (
                   <div className="flex items-center gap-4">
                     <button
-                      onClick={() => handleToggleListening('description')}
+                      onClick={() => handleToggleListening('project')}
                       className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full transition-all ${
-                        listeningTarget === 'description'
-                          ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse'
-                          : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
+                        listeningTarget === 'project' ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse' : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
                       }`}
                     >
-                      {listeningTarget === 'description' ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+                      {listeningTarget === 'project' ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      {listeningTarget === 'description' ? (
+                      {listeningTarget === 'project' ? (
                         <p className="text-sm font-medium text-red-600">● Listening… speak now</p>
-                      ) : description ? (
+                      ) : projectText ? (
                         <p className="text-sm font-medium text-teal-700">✓ Transcript captured — tap mic to add more</p>
                       ) : (
-                        <p className="text-sm text-[#6B7280]">Tap to dictate the project scope</p>
+                        <p className="text-sm text-[#6B7280]">Tap to dictate the project details</p>
                       )}
-                      {listeningTarget === 'description' && interimText && (
+                      {listeningTarget === 'project' && interimText && (
                         <p className="mt-0.5 text-xs italic text-[#9CA3AF] truncate">{interimText}…</p>
                       )}
                     </div>
-                    {description && (
+                    {projectText && (
                       <button
-                        onClick={() => { stopListening(); setDescription(''); setSpeechError(''); }}
+                        onClick={() => { stopListening(); setProjectText(''); setSpeechError(''); }}
                         className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
                         title="Clear"
                       >
@@ -345,64 +336,10 @@ export default function AIProposalGeneratorPage() {
                   <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{speechError}</p>
                 )}
                 <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the project — scope, goals, site conditions, special requirements… (or tap mic to dictate)"
-                  rows={5}
-                  className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
-                />
-              </div>
-            </Card>
-          </div>
-
-          {/* Right: Specs, Photos, Generate */}
-          <div className="space-y-6">
-            {/* Technical Specs */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Technical Specifications</CardTitle>
-              </CardHeader>
-              <div className="space-y-4">
-                {isSpeechSupported && (
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => handleToggleListening('specs')}
-                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full transition-all ${
-                        listeningTarget === 'specs'
-                          ? 'bg-red-100 text-red-600 ring-4 ring-red-200 animate-pulse'
-                          : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
-                      }`}
-                    >
-                      {listeningTarget === 'specs' ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      {listeningTarget === 'specs' ? (
-                        <p className="text-sm font-medium text-red-600">● Listening… speak now</p>
-                      ) : specs ? (
-                        <p className="text-sm font-medium text-teal-700">✓ Specs captured — tap mic to add more</p>
-                      ) : (
-                        <p className="text-sm text-[#6B7280]">Tap to dictate technical specs</p>
-                      )}
-                      {listeningTarget === 'specs' && interimText && (
-                        <p className="mt-0.5 text-xs italic text-[#9CA3AF] truncate">{interimText}…</p>
-                      )}
-                    </div>
-                    {specs && (
-                      <button
-                        onClick={() => { stopListening(); setSpecs(''); setSpeechError(''); }}
-                        className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
-                        title="Clear"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                )}
-                <textarea
-                  value={specs}
-                  onChange={(e) => setSpecs(e.target.value)}
-                  placeholder="Panel size, circuit requirements, conduit type, voltage, code references…"
-                  rows={4}
+                  value={projectText}
+                  onChange={(e) => setProjectText(e.target.value)}
+                  placeholder="Describe the project — scope, materials, site conditions, deadlines, constraints, or tap mic to dictate"
+                  rows={8}
                   className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
                 />
               </div>
@@ -449,7 +386,7 @@ export default function AIProposalGeneratorPage() {
             {/* Generate Button */}
             <Button
               onClick={handleGenerate}
-              disabled={isProcessing || (!projectName && !description && photos.length === 0)}
+              disabled={isProcessing || (!projectName && !projectText && photos.length === 0)}
               className="w-full py-4 text-base"
               icon={isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
             >

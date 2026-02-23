@@ -134,21 +134,29 @@ export function AdminDashboard({ user }: { user: User | null }) {
           label="Active Jobs"
           value={activeJobs.length}
           icon={<Briefcase className="h-5 w-5" />}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
         />
         <StatCard
           label="Pending Assignment"
           value={unassigned.length}
           icon={<UserPlus className="h-5 w-5" />}
+          iconBg="bg-amber-50"
+          iconColor="text-amber-600"
         />
         <StatCard
           label="Total Jobs"
           value={jobs.length}
           icon={<Clock className="h-5 w-5" />}
+          iconBg="bg-teal-50"
+          iconColor="text-teal-600"
         />
         <StatCard
           label="Open Proposals"
           value={openProposals.length}
           icon={<FileText className="h-5 w-5" />}
+          iconBg="bg-violet-50"
+          iconColor="text-violet-600"
         />
       </div>
 

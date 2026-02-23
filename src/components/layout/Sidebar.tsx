@@ -52,13 +52,14 @@ const systemLinks: NavLink[] = [
 ];
 
 function NavItem({
-  link, isActive, collapsed,
-}: { link: NavLink; isActive: boolean; collapsed: boolean }) {
+  link, isActive, collapsed, onNavigate,
+}: { link: NavLink; isActive: boolean; collapsed: boolean; onNavigate?: () => void }) {
   const Icon = link.icon;
   return (
     <Link
       href={link.href}
       title={collapsed ? link.label : undefined}
+      onClick={onNavigate}
       className={cn(
         'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150',
         isActive ? 'text-white' : 'text-white/45 hover:text-white/85',
@@ -99,13 +100,14 @@ function NavItem({
 }
 
 function NavGroup({
-  label, links, pathname, collapsed, user,
+  label, links, pathname, collapsed, user, onNavigate,
 }: {
   label: string;
   links: NavLink[];
   pathname: string;
   collapsed: boolean;
   user: { role: UserRole } | null;
+  onNavigate?: () => void;
 }) {
   const filtered = links.filter((l) => user && l.roles.includes(user.role));
   if (!filtered.length) return null;
@@ -117,13 +119,13 @@ function NavGroup({
         </p>
       )}
       {filtered.map((link) => (
-        <NavItem key={link.href} link={link} isActive={pathname.startsWith(link.href)} collapsed={collapsed} />
+        <NavItem key={link.href} link={link} isActive={pathname.startsWith(link.href)} collapsed={collapsed} onNavigate={onNavigate} />
       ))}
     </div>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
@@ -164,9 +166,9 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="relative flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2.5 py-5 no-scrollbar">
-        <NavGroup label="Main"     links={mainLinks}   pathname={pathname} collapsed={collapsed} user={user} />
-        <NavGroup label="AI Tools" links={aiLinks}     pathname={pathname} collapsed={collapsed} user={user} />
-        <NavGroup label="System"   links={systemLinks} pathname={pathname} collapsed={collapsed} user={user} />
+        <NavGroup label="Main"     links={mainLinks}   pathname={pathname} collapsed={collapsed} user={user} onNavigate={onNavigate} />
+        <NavGroup label="AI Tools" links={aiLinks}     pathname={pathname} collapsed={collapsed} user={user} onNavigate={onNavigate} />
+        <NavGroup label="System"   links={systemLinks} pathname={pathname} collapsed={collapsed} user={user} onNavigate={onNavigate} />
       </nav>
 
       {/* Bottom: user card + collapse */}

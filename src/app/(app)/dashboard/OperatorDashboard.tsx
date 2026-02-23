@@ -207,10 +207,10 @@ export function OperatorDashboard({ user }: { user: User | null }) {
 
       {/* Stats */}
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Assigned Jobs" value={jobsLoading ? '…' : assignedJobs.length} icon={<CheckCircle className="h-5 w-5" />} />
-        <StatCard label="Hours This Week" value="24.5" icon={<Clock className="h-5 w-5" />} />
-        <StatCard label="Active Session" value={activeSession ? 'Live' : 'None'} icon={<Play className="h-5 w-5" />} />
-        <StatCard label="Open Incidents" value={0} icon={<AlertTriangle className="h-5 w-5" />} />
+        <StatCard label="Assigned Jobs" value={jobsLoading ? '…' : assignedJobs.length} icon={<CheckCircle className="h-5 w-5" />} iconBg="bg-blue-50" iconColor="text-blue-600" />
+        <StatCard label="Hours This Week" value="24.5" icon={<Clock className="h-5 w-5" />} iconBg="bg-amber-50" iconColor="text-amber-600" />
+        <StatCard label="Active Session" value={activeSession ? 'Live' : 'None'} icon={<Play className="h-5 w-5" />} iconBg="bg-emerald-50" iconColor="text-emerald-600" />
+        <StatCard label="Open Incidents" value={0} icon={<AlertTriangle className="h-5 w-5" />} iconBg="bg-rose-50" iconColor="text-rose-600" />
       </div>
 
       {/* Today's Jobs */}

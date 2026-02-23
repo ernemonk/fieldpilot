@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Bell, ChevronDown, LogOut } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useRef, useEffect } from 'react';
 
@@ -25,7 +25,7 @@ function getPageTitle(pathname: string): string {
   return '';
 }
 
-export function Topbar() {
+export function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { user, signOut } = useAuth();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -43,9 +43,19 @@ export function Topbar() {
   }, []);
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-[#EBEBF2] bg-white/80 px-6 backdrop-blur-sm">
-      {/* Page title */}
-      <h1 className="text-[15px] font-semibold tracking-tight text-[#12121F]">{pageTitle}</h1>
+    <header className="flex h-16 items-center justify-between border-b border-[#EBEBF2] bg-white/80 px-4 sm:px-6 backdrop-blur-sm">
+      {/* Left side: hamburger + page title */}
+      <div className="flex items-center gap-3">
+        {onMenuToggle && (
+          <button
+            onClick={onMenuToggle}
+            className="rounded-lg p-2 text-[#6B6B88] hover:bg-[#F5F5FA] lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
+        <h1 className="text-[15px] font-semibold tracking-tight text-[#12121F]">{pageTitle}</h1>
+      </div>
 
       {/* Right side */}
       <div className="flex items-center gap-1">

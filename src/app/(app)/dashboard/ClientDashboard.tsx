@@ -85,21 +85,29 @@ export function ClientDashboard({ user }: { user: User | null }) {
           label="Active Projects"
           value={myJobs.filter((j) => ['in_progress','scheduled'].includes(j.status)).length}
           icon={<Briefcase className="h-5 w-5" />}
+          iconBg="bg-blue-100"
+          iconColor="text-blue-600"
         />
         <StatCard
           label="Proposals"
           value={myProposals.length}
           icon={<FileText className="h-5 w-5" />}
+          iconBg="bg-violet-100"
+          iconColor="text-violet-600"
         />
         <StatCard
           label="Completed"
           value={myJobs.filter((j) => j.status === 'completed').length}
           icon={<CheckCircle className="h-5 w-5" />}
+          iconBg="bg-emerald-100"
+          iconColor="text-emerald-600"
         />
         <StatCard
           label="Total Jobs"
           value={myJobs.length}
           icon={<Clock className="h-5 w-5" />}
+          iconBg="bg-amber-100"
+          iconColor="text-amber-600"
         />
       </div>
 
