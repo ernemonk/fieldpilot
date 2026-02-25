@@ -97,15 +97,20 @@ export default function AIProposalGeneratorPage() {
         setInterimText(interim);
       };
       rec.onerror = (e: any) => {
-        console.error('[Speech] Error:', e.error);
         if (e.error === 'not-allowed') {
           setSpeechError('Microphone access denied. Click the mic icon in your browser address bar to allow it.');
           shouldRestartRef.current = false;
           setListeningTarget(null);
+        } else if (e.error === 'audio-capture') {
+          setSpeechError('No microphone found or it is in use by another app. Check your audio settings and try again.');
+          shouldRestartRef.current = false;
+          setListeningTarget(null);
         } else if (e.error === 'no-speech') {
           // iOS fires no-speech when it times out — handled by onend restart below
+        } else if (e.error === 'aborted') {
+          // User or code stopped the session intentionally — no UI error needed
         } else {
-          setSpeechError(`Speech error: ${e.error}`);
+          setSpeechError(`Microphone error: ${e.error}. Try reloading the page.`);
           shouldRestartRef.current = false;
           setListeningTarget(null);
         }

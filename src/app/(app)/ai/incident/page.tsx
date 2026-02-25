@@ -104,6 +104,7 @@ export default function AIIncidentReportPage() {
   const [isListening, setIsListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [interimText, setInterimText] = useState('');
+  const [speechError, setSpeechError] = useState('');
 
   const [isSpeechSupported, setIsSpeechSupported] = useState(false);
   useEffect(() => {
@@ -140,15 +141,23 @@ export default function AIIncidentReportPage() {
       };
       rec.onerror = (e: any) => {
         if (e.error === 'not-allowed') {
-          console.error('[Speech] Microphone access denied.');
+          setSpeechError('Microphone access denied. Click the mic icon in your browser address bar to allow it.');
+          shouldRestartRef.current = false;
+          setIsListening(false);
+          setInterimText('');
+        } else if (e.error === 'audio-capture') {
+          setSpeechError('No microphone found or it is in use by another app. Check your audio settings and try again.');
           shouldRestartRef.current = false;
           setIsListening(false);
           setInterimText('');
         } else if (e.error === 'no-speech') {
           // Expected: browser timed out waiting for audio — onend will restart
           setInterimText('');
+        } else if (e.error === 'aborted') {
+          // User or code stopped the session intentionally — no UI error needed
+          setInterimText('');
         } else {
-          console.error('[Speech] Error:', e.error);
+          setSpeechError(`Microphone error: ${e.error}. Try reloading the page.`);
           shouldRestartRef.current = false;
           setIsListening(false);
           setInterimText('');
@@ -350,6 +359,9 @@ export default function AIIncidentReportPage() {
                       </button>
                     )}
                   </div>
+                )}
+                {speechError && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{speechError}</p>
                 )}
                 <textarea
                   value={description}
