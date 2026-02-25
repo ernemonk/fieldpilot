@@ -10,7 +10,7 @@ import { Textarea, Select } from '@/components/ui/FormFields';
 import { Avatar } from '@/components/ui/Avatar';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
-import { Plus, AlertTriangle, CheckCircle, Download, Loader2 } from 'lucide-react';
+import { Plus, AlertTriangle, CheckCircle, Download, Loader2, Save } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import {
   getIncidentReports,
@@ -60,6 +60,9 @@ export default function IncidentsPage() {
   const [statusFilter, setStatusFilter] = useState<IncidentResolution | 'all'>('all');
 
   const [newForm, setNewForm] = useState({ jobId: '', severity: 'medium' as IncidentSeverity, description: '' });
+  const [incEditForm, setIncEditForm] = useState({ severity: 'medium' as IncidentSeverity, description: '' });
+  const [incEditSaving, setIncEditSaving] = useState(false);
+  const [incEditSuccess, setIncEditSuccess] = useState(false);
 
   // â”€â”€ Load data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadData = useCallback(async () => {
@@ -94,8 +97,37 @@ export default function IncidentsPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const handleEditIncident = async () => {
+    if (!selectedIncident || !tenantId) return;
+    setIncEditSaving(true);
+    try {
+      await updateIncidentReport(tenantId, selectedIncident.id, {
+        severity: incEditForm.severity,
+        description: incEditForm.description,
+      });
+      setIncidents((prev) =>
+        prev.map((i) =>
+          i.id === selectedIncident.id
+            ? { ...i, severity: incEditForm.severity, description: incEditForm.description }
+            : i
+        )
+      );
+      setSelectedIncident((prev) =>
+        prev ? { ...prev, severity: incEditForm.severity, description: incEditForm.description } : prev
+      );
+      setIncEditSuccess(true);
+    } catch (err) {
+      console.error('Failed to update incident:', err);
+      alert('Failed to save changes.');
+    } finally {
+      setIncEditSaving(false);
+    }
+  };
+
   const openDetail = (inc: IncidentReport) => {
     setSelectedIncident(inc);
+    setIncEditForm({ severity: inc.severity, description: inc.description });
+    setIncEditSuccess(false);
     if (!ownerNotesMap[inc.id]) {
       setOwnerNotesMap((prev) => ({ ...prev, [inc.id]: inc.aiGeneratedReport ?? '' }));
     }
@@ -369,6 +401,52 @@ export default function IncidentsPage() {
                   </div>
                 ),
               },
+              ...((isOwnerOrAdmin || (isOperator && selectedIncident.operatorId === user?.uid)) ? [{
+                key: 'edit',
+                label: 'Edit',
+                content: (
+                  <div className="space-y-4">
+                    {incEditSuccess && (
+                      <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
+                        <CheckCircle className="h-4 w-4 shrink-0" />
+                        Changes saved successfully.
+                      </div>
+                    )}
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-[#6B7280]">Severity</p>
+                      <select
+                        value={incEditForm.severity}
+                        onChange={(e) => setIncEditForm((f) => ({ ...f, severity: e.target.value as IncidentSeverity }))}
+                        className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#111827] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-[#6B7280]">Description</p>
+                      <textarea
+                        value={incEditForm.description}
+                        onChange={(e) => setIncEditForm((f) => ({ ...f, description: e.target.value }))}
+                        rows={6}
+                        placeholder="Describe what happened..."
+                        className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      />
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        icon={incEditSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        onClick={handleEditIncident}
+                        disabled={incEditSaving}
+                      >
+                        {incEditSaving ? 'Saving…' : 'Save Changes'}
+                      </Button>
+                    </div>
+                  </div>
+                ),
+              }] : []),
               ...(isOwnerOrAdmin ? [{
                 key: 'ownerReview',
                 label: 'Owner Review',

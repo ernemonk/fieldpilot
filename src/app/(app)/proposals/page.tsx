@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import {
   Plus, FileText, CheckCircle, XCircle, Clock, Send,
-  Briefcase, Download, Eye, Loader2,
+  Briefcase, Download, Eye, Loader2, Save,
 } from 'lucide-react';
 import type { Proposal, ProposalStatus, Job, Client } from '@/lib/types';
 import { cn, formatDate } from '@/lib/utils';
@@ -48,6 +48,9 @@ export default function ProposalsPage() {
   const [ownerNote, setOwnerNote] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProposalStatus | 'all'>('all');
   const [newProposalForm, setNewProposalForm] = useState({ jobId: '', scope: '', notes: '', priceEstimate: '' });
+  const [editForm, setEditForm] = useState({ aiGeneratedText: '', priceEstimate: '', scope: '', notes: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editSuccess, setEditSuccess] = useState(false);
 
   // ── Load data ────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -112,7 +115,36 @@ export default function ProposalsPage() {
     }
   };
 
+  const handleEditSave = async () => {
+    if (!selected || !tenantId) return;
+    setEditSaving(true);
+    try {
+      const updates: Partial<Proposal> = {
+        aiGeneratedText: editForm.aiGeneratedText,
+        priceEstimate: parseFloat(editForm.priceEstimate) || 0,
+        specsJson: { ...(selected.specsJson ?? {}), scope: editForm.scope, notes: editForm.notes },
+        version: selected.version + 1,
+      };
+      await updateProposal(tenantId, selected.id, updates);
+      setProposals((prev) => prev.map((p) => p.id === selected.id ? { ...p, ...updates } : p));
+      setSelected((prev) => prev ? { ...prev, ...updates } : prev);
+      setEditSuccess(true);
+    } catch (err) {
+      console.error('Failed to update proposal:', err);
+      alert('Failed to save changes.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const openDetail = async (p: Proposal) => {
+    setEditForm({
+      aiGeneratedText: p.aiGeneratedText ?? '',
+      priceEstimate: String(p.priceEstimate),
+      scope: (p.specsJson?.scope as string) ?? '',
+      notes: (p.specsJson?.notes as string) ?? '',
+    });
+    setEditSuccess(false);
     if (isClient && p.status === 'sent' && tenantId) {
       // Auto-mark as viewed
       await handleStatusChange(p.id, 'viewed');
@@ -395,6 +427,69 @@ export default function ProposalsPage() {
                   </div>
                 ),
               },
+              ...(isOwnerOrAdmin ? [{
+                key: 'edit',
+                label: 'Edit Content',
+                content: (
+                  <div className="space-y-4">
+                    {editSuccess && (
+                      <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
+                        <CheckCircle className="h-4 w-4 shrink-0" />
+                        Changes saved — now v{selected.version}
+                      </div>
+                    )}
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-[#6B7280]">Price Estimate ($)</p>
+                      <input
+                        type="number"
+                        value={editForm.priceEstimate}
+                        onChange={(e) => setEditForm((f) => ({ ...f, priceEstimate: e.target.value }))}
+                        placeholder="0.00"
+                        className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-[#6B7280]">Scope of Work</p>
+                      <textarea
+                        value={editForm.scope}
+                        onChange={(e) => setEditForm((f) => ({ ...f, scope: e.target.value }))}
+                        rows={3}
+                        placeholder="Describe the scope..."
+                        className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-[#6B7280]">Notes</p>
+                      <textarea
+                        value={editForm.notes}
+                        onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                        rows={3}
+                        placeholder="Additional notes..."
+                        className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-[#6B7280]">AI Generated Content</p>
+                      <textarea
+                        value={editForm.aiGeneratedText}
+                        onChange={(e) => setEditForm((f) => ({ ...f, aiGeneratedText: e.target.value }))}
+                        rows={12}
+                        placeholder="AI generated proposal text..."
+                        className="w-full rounded-lg border border-[#E5E7EB] bg-white p-3 font-mono text-sm text-[#111827] placeholder-[#9CA3AF] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      />
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        icon={editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        onClick={handleEditSave}
+                        disabled={editSaving}
+                      >
+                        {editSaving ? 'Saving…' : 'Save Changes'}
+                      </Button>
+                    </div>
+                  </div>
+                ),
+              }] : []),
               {
                 key: 'versions',
                 label: 'Version History',
