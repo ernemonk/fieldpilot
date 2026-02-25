@@ -13,6 +13,8 @@ import { useState, useRef, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { printDocument } from '@/lib/printDoc';
 import {
   Mic,
   MicOff,
@@ -50,6 +52,7 @@ export default function AIProposalGeneratorPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const markdownRef = useRef<HTMLDivElement>(null);
 
   // ── Speech-to-text (Web Speech API) ──────────────────────────────────────
   const recognitionRef = useRef<any>(null);
@@ -227,7 +230,10 @@ export default function AIProposalGeneratorPage() {
                 <Button
                   variant="secondary"
                   icon={<Download className="h-4 w-4" />}
-                  onClick={() => alert('PDF export — connect to PDF generation service')}
+                  onClick={() => printDocument(
+                    projectName || 'Proposal',
+                    markdownRef.current?.innerHTML ?? ''
+                  )}
                 >
                   Export PDF
                 </Button>
@@ -420,31 +426,11 @@ export default function AIProposalGeneratorPage() {
                 className="w-full rounded-lg border border-[#E5E7EB] bg-white p-4 font-mono text-sm text-[#111827] focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
               />
             ) : (
-              <div className="prose prose-sm max-w-none rounded-lg bg-gray-50 p-6 text-[#111827]">
-                {content.split('\n').map((line, i) => {
-                  if (line.startsWith('# ')) return <h1 key={i} className="text-xl font-bold text-[#111827] mb-3">{line.replace('# ', '')}</h1>;
-                  if (line.startsWith('## ')) return <h2 key={i} className="text-lg font-semibold text-[#111827] mt-5 mb-2">{line.replace('## ', '')}</h2>;
-                  if (line.startsWith('### ')) return <h3 key={i} className="text-base font-semibold text-[#111827] mt-4 mb-1">{line.replace('### ', '')}</h3>;
-                  if (line.startsWith('| ')) {
-                    const cells = line.split('|').filter(Boolean).map((c) => c.trim());
-                    if (cells.every((c) => c.match(/^[-]+$/))) return null;
-                    return (
-                      <div key={i} className="flex gap-4 py-1 text-sm text-[#374151]">
-                        {cells.map((cell, j) => (
-                          <span key={j} className={`flex-1 ${cell.startsWith('**') ? 'font-semibold text-[#111827]' : ''}`}>
-                            {cell.replace(/\*\*/g, '')}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  }
-                  if (line.startsWith('- ')) return <p key={i} className="ml-4 text-sm text-[#374151]">{line}</p>;
-                  if (line.startsWith('---')) return <hr key={i} className="my-4 border-[#E5E7EB]" />;
-                  if (line.startsWith('*') && line.endsWith('*')) return <p key={i} className="text-xs text-[#9CA3AF] italic">{line.replace(/\*/g, '')}</p>;
-                  if (line.trim() === '') return <br key={i} />;
-                  return <p key={i} className="text-sm text-[#374151]">{line.replace(/\*\*/g, '')}</p>;
-                })}
-              </div>
+              <MarkdownRenderer
+                ref={markdownRef}
+                content={content}
+                className="rounded-lg bg-gray-50 p-6"
+              />
             )}
           </Card>
         </div>

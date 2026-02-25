@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
@@ -8,6 +8,8 @@ import { Modal } from '@/components/ui/Modal';
 import { SlideOverPanel, SlideOverTabs } from '@/components/ui/SlideOverPanel';
 import { Textarea, Select } from '@/components/ui/FormFields';
 import { Avatar } from '@/components/ui/Avatar';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { printDocument } from '@/lib/printDoc';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
 import { Plus, AlertTriangle, CheckCircle, Download, Loader2, Save } from 'lucide-react';
@@ -63,6 +65,7 @@ export default function IncidentsPage() {
   const [incEditForm, setIncEditForm] = useState({ severity: 'medium' as IncidentSeverity, description: '' });
   const [incEditSaving, setIncEditSaving] = useState(false);
   const [incEditSuccess, setIncEditSuccess] = useState(false);
+  const incidentPrintRef = useRef<HTMLDivElement>(null);
 
   // â”€â”€ Load data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadData = useCallback(async () => {
@@ -380,7 +383,20 @@ export default function IncidentsPage() {
                     {selectedIncident.aiGeneratedReport && !isOwnerOrAdmin && (
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">AI Report</p>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#374151]">{selectedIncident.aiGeneratedReport}</p>
+                        <MarkdownRenderer
+                          content={selectedIncident.aiGeneratedReport}
+                          className="mt-2 rounded-lg bg-gray-50 p-4"
+                        />
+                      </div>
+                    )}
+                    {selectedIncident.aiGeneratedReport && isOwnerOrAdmin && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">AI Report</p>
+                        <MarkdownRenderer
+                          ref={incidentPrintRef}
+                          content={selectedIncident.aiGeneratedReport}
+                          className="mt-2 rounded-lg bg-gray-50 p-4"
+                        />
                       </div>
                     )}
 
@@ -487,9 +503,12 @@ export default function IncidentsPage() {
                         size="sm"
                         variant="secondary"
                         icon={<Download className="h-4 w-4" />}
-                        onClick={() => alert('PDF export â€” connect to PDF generation service')}
+                        onClick={() => printDocument(
+                          `Incident Report — ${selectedIncident.jobTitle || selectedIncident.jobId}`,
+                          incidentPrintRef.current?.innerHTML ?? ''
+                        )}
                       >
-                        Export PDF
+                        Print / Save PDF
                       </Button>
                     </div>
                   </div>

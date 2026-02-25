@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SlideOverPanel, SlideOverTabs } from '@/components/ui/SlideOverPanel';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Textarea, Select } from '@/components/ui/FormFields';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { printDocument } from '@/lib/printDoc';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
@@ -51,6 +53,7 @@ export default function ProposalsPage() {
   const [editForm, setEditForm] = useState({ aiGeneratedText: '', priceEstimate: '', scope: '', notes: '' });
   const [editSaving, setEditSaving] = useState(false);
   const [editSuccess, setEditSuccess] = useState(false);
+  const proposalPrintRef = useRef<HTMLDivElement>(null);
 
   // ── Load data ────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -417,7 +420,10 @@ export default function ProposalsPage() {
                             size="sm"
                             variant="secondary"
                             icon={<Download className="h-4 w-4" />}
-                            onClick={() => alert('PDF export — connect to PDF generation service')}
+                            onClick={() => printDocument(
+                              getJobTitle(selected.jobId),
+                              proposalPrintRef.current?.innerHTML ?? ''
+                            )}
                           >
                             Export PDF
                           </Button>
@@ -427,10 +433,35 @@ export default function ProposalsPage() {
                   </div>
                 ),
               },
+              ...(selected.aiGeneratedText ? [{
+                key: 'fullProposal',
+                label: 'Full Proposal',
+                content: (
+                  <div className="space-y-3">
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<Download className="h-4 w-4" />}
+                        onClick={() => printDocument(
+                          getJobTitle(selected.jobId),
+                          proposalPrintRef.current?.innerHTML ?? ''
+                        )}
+                      >
+                        Print / Save PDF
+                      </Button>
+                    </div>
+                    <MarkdownRenderer
+                      ref={proposalPrintRef}
+                      content={selected.aiGeneratedText}
+                      className="rounded-lg bg-gray-50 p-5"
+                    />
+                  </div>
+                ),
+              }] : []),
               ...(isOwnerOrAdmin ? [{
                 key: 'edit',
-                label: 'Edit Content',
-                content: (
+                label: 'Edit Content',                content: (
                   <div className="space-y-4">
                     {editSuccess && (
                       <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
