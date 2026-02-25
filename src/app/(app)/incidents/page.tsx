@@ -114,7 +114,6 @@ export default function IncidentsPage() {
         severity: newForm.severity,
         description: newForm.description,
         photos: [],
-        voiceNoteRecorded: false,
         resolutionStatus: 'open',
       });
       setModalOpen(false);

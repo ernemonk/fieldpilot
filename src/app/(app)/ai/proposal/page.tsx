@@ -2,8 +2,10 @@
 
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    SpeechRecognition: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    webkitSpeechRecognition: any;
   }
 }
 
@@ -69,7 +71,7 @@ export default function AIProposalGeneratorPage() {
     // Stop any active session before starting a new one
     if (recognitionRef.current) { shouldRestartRef.current = false; recognitionRef.current.stop(); }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR: new () => SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR: new () => any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { setSpeechError('Speech recognition not supported. Use Chrome or Edge.'); return; }
     // Seed the accumulator from the current value of the project textarea
     finalAccumRef.current = projectText;
@@ -81,7 +83,7 @@ export default function AIProposalGeneratorPage() {
       rec.continuous = true;
       rec.interimResults = true;
       rec.lang = 'en-US';
-      rec.onresult = (e) => {
+      rec.onresult = (e: any) => {
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const t = e.results[i][0].transcript;
@@ -94,7 +96,7 @@ export default function AIProposalGeneratorPage() {
         }
         setInterimText(interim);
       };
-      rec.onerror = (e) => {
+      rec.onerror = (e: any) => {
         console.error('[Speech] Error:', e.error);
         if (e.error === 'not-allowed') {
           setSpeechError('Microphone access denied. Click the mic icon in your browser address bar to allow it.');

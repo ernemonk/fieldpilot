@@ -72,7 +72,7 @@ export function OwnerDashboard({ user }: { user: User | null }) {
   })).sort((a, b) => b.jobs - a.jobs);
 
   const recentJobs = [...jobs].sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime()).slice(0, 5);
-  const clientName = (clientId: string) => clients.find((c) => c.id === clientId)?.name ?? clientId;
+  const clientName = (clientId: string) => clients.find((c) => c.id === clientId)?.companyName ?? clientId;
 
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-[#9CA3AF]" /></div>;

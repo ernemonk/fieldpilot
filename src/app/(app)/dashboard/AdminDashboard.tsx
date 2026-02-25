@@ -54,7 +54,7 @@ export function AdminDashboard({ user }: { user: User | null }) {
   useEffect(() => { loadData(); }, [loadData]);
 
   // Derived helpers
-  const clientName = (clientId: string) => clients.find((c) => c.id === clientId)?.name ?? clientId;
+  const clientName = (clientId: string) => clients.find((c) => c.id === clientId)?.companyName ?? clientId;
   const operatorNames = (ids: string[]) => ids.map((id) => allUsers.find((u) => u.uid === id)?.displayName ?? id);
   const jobTitle = (jobId: string) => jobs.find((j) => j.id === jobId)?.title ?? jobId;
 

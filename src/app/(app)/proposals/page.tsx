@@ -83,7 +83,7 @@ export default function ProposalsPage() {
   const getClientName = (jobId: string) => {
     const job = allJobs.find((j) => j.id === jobId);
     if (!job) return '';
-    return allClients.find((c) => c.id === job.clientId)?.name ?? job.clientId;
+    return allClients.find((c) => c.id === job.clientId)?.companyName ?? job.clientId;
   };
   const getJobScope = (p: Proposal) => (p.specsJson?.scope as string) ?? p.aiGeneratedText ?? '';
   const getProposalNotes = (p: Proposal) => (p.specsJson?.notes as string) ?? '';
@@ -273,7 +273,7 @@ export default function ProposalsPage() {
       <SlideOverPanel
         open={slideOpen}
         onClose={() => setSlideOpen(false)}
-        title={selected?.jobTitle || 'Proposal'}
+        title={selected ? getJobTitle(selected.jobId) : 'Proposal'}
         width="max-w-xl"
       >
         {selected && (

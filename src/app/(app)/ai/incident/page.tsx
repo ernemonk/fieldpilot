@@ -97,7 +97,8 @@ export default function AIIncidentReportPage() {
   };
 
   // ── Speech-to-text (Web Speech API) ──────────────────────────────────────
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   const shouldRestartRef = useRef(false); // iOS Safari stops on silence — auto-restart when true
   const finalAccumRef = useRef('');       // keep accumulator in sync across restarts
   const [isListening, setIsListening] = useState(false);
@@ -111,7 +112,7 @@ export default function AIIncidentReportPage() {
 
   const startListening = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR: new () => SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR: new () => any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { console.warn('[Speech] SpeechRecognition not supported in this browser'); return; }
     // Seed the accumulator from whatever is already in the description box
     finalAccumRef.current = description;
@@ -123,7 +124,7 @@ export default function AIIncidentReportPage() {
       rec.continuous = true;
       rec.interimResults = true;
       rec.lang = 'en-US';
-      rec.onresult = (e) => {
+      rec.onresult = (e: any) => {
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const t = e.results[i][0].transcript;
@@ -137,7 +138,7 @@ export default function AIIncidentReportPage() {
         }
         setInterimText(interim);
       };
-      rec.onerror = (e) => {
+      rec.onerror = (e: any) => {
         if (e.error === 'not-allowed') {
           console.error('[Speech] Microphone access denied.');
           shouldRestartRef.current = false;

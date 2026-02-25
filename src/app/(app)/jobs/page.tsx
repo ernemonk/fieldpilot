@@ -850,7 +850,7 @@ export default function JobsPage() {
               createdBy: user.uid,
             });
             setJobs((prev) => [...prev, newJob]);
-            setNewJobForm({ title: '', description: '', priority: 'medium', status: 'pending', clientId: '', estimatedStart: '', estimatedEnd: '' });
+            setNewJobForm({ title: '', description: '', priority: 'medium', status: 'lead', clientId: '', estimatedStart: '', estimatedEnd: '' });
             setModalOpen(false);
           } catch (err) {
             console.error('Failed to create job:', err);
@@ -892,7 +892,7 @@ export default function JobsPage() {
               id="jobClient"
               value={newJobForm.clientId}
               onChange={(e) => setNewJobForm((f) => ({ ...f, clientId: e.target.value }))}
-              options={[{ value: '', label: '— Select client —' }, ...allClients.map((c) => ({ value: c.id, label: c.name }))]}
+              options={[{ value: '', label: '— Select client —' }, ...allClients.map((c) => ({ value: c.id, label: c.companyName }))]}
             />
           )}
           <Input label="Estimated Start" id="jobStart" type="date"
