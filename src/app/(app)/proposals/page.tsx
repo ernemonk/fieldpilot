@@ -91,7 +91,7 @@ export default function ProposalsPage() {
     if (!job) return '';
     return allClients.find((c) => c.id === job.clientId)?.companyName ?? job.clientId;
   };
-  const getJobScope = (p: Proposal) => (p.specsJson?.scope as string) ?? p.aiGeneratedText ?? '';
+  const getJobScope = (p: Proposal) => (p.specsJson?.scope as string) ?? '';
   const getProposalNotes = (p: Proposal) => (p.specsJson?.notes as string) ?? '';
 
   // ── Filtered list ────────────────────────────────────────────────────────
@@ -246,9 +246,13 @@ export default function ProposalsPage() {
                 </span>
               </div>
 
-              {getJobScope(proposal) && (
+              {getJobScope(proposal) ? (
                 <p className="mt-2 text-xs text-[#6B7280] line-clamp-2">{getJobScope(proposal)}</p>
-              )}
+              ) : proposal.aiGeneratedText ? (
+                <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-teal-700">
+                  <span>✦</span> AI proposal generated
+                </p>
+              ) : null}
 
               <div className="mt-4 flex items-center justify-between border-t border-[#E5E7EB] pt-4">
                 <div>
@@ -349,6 +353,15 @@ export default function ProposalsPage() {
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">Scope of Work</p>
                         <p className="mt-2 text-sm text-[#374151] leading-relaxed">{getJobScope(selected)}</p>
+                      </div>
+                    )}
+                    {selected.aiGeneratedText && (
+                      <div className="flex items-center gap-3 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3">
+                        <span className="text-lg">✦</span>
+                        <div>
+                          <p className="text-sm font-medium text-teal-900">AI-generated proposal available</p>
+                          <p className="text-xs text-teal-700">Open the <strong>Full Proposal</strong> tab to read and print it.</p>
+                        </div>
                       </div>
                     )}
 
