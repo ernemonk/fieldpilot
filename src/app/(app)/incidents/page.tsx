@@ -12,8 +12,9 @@ import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { printDocument } from '@/lib/printDoc';
 import { RoleGuard } from '@/components/RoleGuard';
 import { useAuth } from '@/context/AuthContext';
-import { Plus, AlertTriangle, CheckCircle, Download, Loader2, Save } from 'lucide-react';
+import { Plus, AlertTriangle, CheckCircle, Download, Loader2, Save, Sparkles } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
+import { callGenAI } from '@/lib/genai';
 import {
   getIncidentReports,
   createIncidentReport,
@@ -41,7 +42,7 @@ const resolutionConfig: Record<IncidentResolution, { color: string; label: strin
 const resolutionFlow: IncidentResolution[] = ['open', 'investigating', 'resolved', 'closed'];
 
 export default function IncidentsPage() {
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
   const tenantId = user?.tenantId ?? '';
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
   const isOperator = user?.role === 'operator';
@@ -64,6 +65,7 @@ export default function IncidentsPage() {
   const [newForm, setNewForm] = useState({ jobId: '', severity: 'medium' as IncidentSeverity, description: '' });
   const [incEditForm, setIncEditForm] = useState({ severity: 'medium' as IncidentSeverity, description: '' });
   const [incEditSaving, setIncEditSaving] = useState(false);
+  const [incEditRegenerating, setIncEditRegenerating] = useState(false);
   const [incEditSuccess, setIncEditSuccess] = useState(false);
   const incidentPrintRef = useRef<HTMLDivElement>(null);
 
@@ -104,24 +106,49 @@ export default function IncidentsPage() {
     if (!selectedIncident || !tenantId) return;
     setIncEditSaving(true);
     try {
+      // 1. Save description + severity first
       await updateIncidentReport(tenantId, selectedIncident.id, {
         severity: incEditForm.severity,
         description: incEditForm.description,
       });
-      setIncidents((prev) =>
-        prev.map((i) =>
-          i.id === selectedIncident.id
-            ? { ...i, severity: incEditForm.severity, description: incEditForm.description }
-            : i
-        )
-      );
-      setSelectedIncident((prev) =>
-        prev ? { ...prev, severity: incEditForm.severity, description: incEditForm.description } : prev
-      );
+      const baseUpdates = { severity: incEditForm.severity, description: incEditForm.description };
+      setIncidents((prev) => prev.map((i) => i.id === selectedIncident.id ? { ...i, ...baseUpdates } : i));
+      setSelectedIncident((prev) => prev ? { ...prev, ...baseUpdates } : prev);
+
+      // 2. Regenerate AI report if we have a Firebase token
+      if (firebaseUser) {
+        setIncEditRegenerating(true);
+        try {
+          const token = await firebaseUser.getIdToken();
+          const data = await callGenAI(token, {
+            type: 'incident',
+            payload: {
+              jobTitle: selectedIncident.jobTitle ?? null,
+              operatorName: userMap[selectedIncident.operatorId] ?? null,
+              date: new Date(selectedIncident.createdAt).toISOString().split('T')[0],
+              time: new Date(selectedIncident.createdAt).toTimeString().slice(0, 5),
+              severity: incEditForm.severity,
+              description: incEditForm.description,
+              photos: selectedIncident.photos ?? [],
+              transcription: (selectedIncident as any).voiceTranscript ?? null,
+              location: null,
+              witnesses: [],
+            },
+          });
+          const newReport = data.markdown;
+          await updateIncidentReport(tenantId, selectedIncident.id, { aiGeneratedReport: newReport });
+          setIncidents((prev) => prev.map((i) => i.id === selectedIncident.id ? { ...i, aiGeneratedReport: newReport } : i));
+          setSelectedIncident((prev) => prev ? { ...prev, aiGeneratedReport: newReport } : prev);
+        } catch (aiErr) {
+          console.error('AI regeneration failed — report unchanged:', aiErr);
+        } finally {
+          setIncEditRegenerating(false);
+        }
+      }
+
       setIncEditSuccess(true);
     } catch (err) {
       console.error('Failed to update incident:', err);
-      alert('Failed to save changes.');
     } finally {
       setIncEditSaving(false);
     }
@@ -380,23 +407,29 @@ export default function IncidentsPage() {
                     </div>
 
                     {/* AI-generated report (if any) */}
-                    {selectedIncident.aiGeneratedReport && !isOwnerOrAdmin && (
+                    {(selectedIncident.aiGeneratedReport || incEditRegenerating) && (
                       <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">AI Report</p>
-                        <MarkdownRenderer
-                          content={selectedIncident.aiGeneratedReport}
-                          className="mt-2 rounded-lg bg-gray-50 p-4"
-                        />
-                      </div>
-                    )}
-                    {selectedIncident.aiGeneratedReport && isOwnerOrAdmin && (
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">AI Report</p>
-                        <MarkdownRenderer
-                          ref={incidentPrintRef}
-                          content={selectedIncident.aiGeneratedReport}
-                          className="mt-2 rounded-lg bg-gray-50 p-4"
-                        />
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280]">AI Report</p>
+                          {incEditRegenerating && (
+                            <span className="inline-flex items-center gap-1 text-xs text-teal-600">
+                              <Sparkles className="h-3 w-3 animate-pulse" />
+                              Regenerating…
+                            </span>
+                          )}
+                        </div>
+                        {incEditRegenerating ? (
+                          <div className="flex items-center gap-3 rounded-lg bg-teal-50 p-4 text-sm text-teal-700">
+                            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                            Generating updated report from your changes…
+                          </div>
+                        ) : selectedIncident.aiGeneratedReport ? (
+                          <MarkdownRenderer
+                            ref={isOwnerOrAdmin ? incidentPrintRef : undefined}
+                            content={selectedIncident.aiGeneratedReport}
+                            className="mt-2 rounded-lg bg-gray-50 p-4"
+                          />
+                        ) : null}
                       </div>
                     )}
 
@@ -425,7 +458,7 @@ export default function IncidentsPage() {
                     {incEditSuccess && (
                       <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
                         <CheckCircle className="h-4 w-4 shrink-0" />
-                        Changes saved successfully.
+                        Saved — AI report regenerated and updated.
                       </div>
                     )}
                     <div>
@@ -453,11 +486,17 @@ export default function IncidentsPage() {
                     </div>
                     <div className="flex justify-end pt-2">
                       <Button
-                        icon={incEditSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        icon={
+                          incEditRegenerating
+                            ? <Sparkles className="h-4 w-4 animate-pulse" />
+                            : incEditSaving
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Save className="h-4 w-4" />
+                        }
                         onClick={handleEditIncident}
-                        disabled={incEditSaving}
+                        disabled={incEditSaving || incEditRegenerating}
                       >
-                        {incEditSaving ? 'Saving…' : 'Save Changes'}
+                        {incEditRegenerating ? 'Regenerating AI report…' : incEditSaving ? 'Saving…' : 'Save Changes'}
                       </Button>
                     </div>
                   </div>
